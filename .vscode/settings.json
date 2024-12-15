@@ -1,0 +1,25 @@
+{
+  // shell
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  // cmake
+  "cmake.configureOnOpen": false,
+  // clangd
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "clangd.path": "/usr/bin/clangd-16",
+  "clangd.arguments": [
+    "--query-driver=/usr/bin/c++", // for cross compile usage
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--completion-style=detailed",
+    "--clang-tidy",
+    "--clang-tidy-checks=-*,modernize*",
+    "--header-insertion=never",
+    "--pretty"
+  ],
+  // clang-format
+  "[cpp]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "clang-format.executable": "/usr/bin/clang-format-16",
+  "clang-format.style": "file:${containerWorkspaceFolder}/.clang-format:",
+  "clang-format.fallbackStyle": "Google",
+}
