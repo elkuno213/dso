@@ -1,0 +1,37 @@
+services:
+  dso:
+    container_name: dso
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - USERNAME
+        - UID
+        - GID
+      tags:
+        - "dso:latest"
+    volumes:
+      - ./:/workspaces/dso
+      - $HOME/data:/data
+    environment:
+      - DISPLAY=dso-novnc:0.0
+    networks:
+      - dso-network
+    tty: true
+
+  dso-novnc:
+    container_name: dso-novnc
+    image: "theasp/novnc:latest"
+    environment:
+      - DISPLAY_WIDTH=1800
+      - DISPLAY_HEIGHT=1012
+      - RUN_XTERM=no
+      - RUN_FLUXBOX=yes
+    ports:
+      - "8080:8080" # http://localhost:8080/vnc.html
+    networks:
+      - dso-network
+
+networks:
+  dso-network:
+    name: dso-network
