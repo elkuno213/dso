@@ -43,46 +43,46 @@
 #include "util/globalFuncs.h"
 #include "util/settings.h"
 
-std::string vignette   = "";
-std::string gammaCalib = "";
-std::string source     = "";
-std::string calib      = "";
-double rescale         = 1;
-bool reverse           = false;
-bool disableROS        = false;
-int start              = 0;
-int end                = 100000;
-bool prefetch          = false;
-float playbackSpeed    = 0; // 0 for linearize (play as fast as possible, while sequentializing
+std::string vignette    = "";
+std::string gamma_calib = "";
+std::string source      = "";
+std::string calib       = "";
+double rescale          = 1;
+bool reverse            = false;
+bool disable_ros        = false;
+int start               = 0;
+int end                 = 100000;
+bool prefetch           = false;
+float playback_speed    = 0; // 0 for linearize (play as fast as possible, while sequentializing
                             // tracking & mapping). otherwise, factor on timestamps.
-bool preload           = false;
-bool useSampleOutput   = false;
+bool preload            = false;
+bool use_sample_output  = false;
 
 int mode = 0;
 
-bool firstRosSpin = false;
+bool first_ros_spin = false;
 
 using namespace dso;
 
-void my_exit_handler(int s) {
+void exit_handler(int s) {
   printf("Caught signal %d\n", s);
   exit(1);
 }
 
-void exitThread() {
-  struct sigaction sigIntHandler;
-  sigIntHandler.sa_handler = my_exit_handler;
-  sigemptyset(&sigIntHandler.sa_mask);
-  sigIntHandler.sa_flags = 0;
-  sigaction(SIGINT, &sigIntHandler, NULL);
+void exit_func() {
+  struct sigaction sig_int_handler;
+  sig_int_handler.sa_handler = exit_handler;
+  sigemptyset(&sig_int_handler.sa_mask);
+  sig_int_handler.sa_flags = 0;
+  sigaction(SIGINT, &sig_int_handler, NULL);
 
-  firstRosSpin = true;
+  first_ros_spin = true;
   while (true) {
     pause();
   }
 }
 
-void settingsDefault(int preset) {
+void set_default_settings(const int preset) {
   printf("\n=============== PRESET Settings: ===============\n");
   if (preset == 0 || preset == 1) {
     printf(
@@ -95,7 +95,7 @@ void settingsDefault(int preset) {
       preset == 0 ? "no " : "1x"
     );
 
-    playbackSpeed                  = (preset == 0 ? 0 : 1);
+    playback_speed                 = (preset == 0 ? 0 : 1);
     preload                        = preset == 1;
     setting_desiredImmatureDensity = 1500;
     setting_desiredPointDensity    = 2000;
@@ -118,7 +118,7 @@ void settingsDefault(int preset) {
       preset == 0 ? "no " : "5x"
     );
 
-    playbackSpeed                  = (preset == 2 ? 0 : 5);
+    playback_speed                 = (preset == 2 ? 0 : 5);
     preload                        = preset == 3;
     setting_desiredImmatureDensity = 600;
     setting_desiredPointDensity    = 800;
@@ -136,91 +136,91 @@ void settingsDefault(int preset) {
   printf("==============================================\n");
 }
 
-void parseArgument(char* arg) {
-  int option;
-  float foption;
+void parse_arg(char* arg) {
+  int option_int;
+  float option_float;
   char buf[1000];
 
-  if (1 == sscanf(arg, "sampleoutput=%d", &option)) {
-    if (option == 1) {
-      useSampleOutput = true;
+  if (1 == sscanf(arg, "sampleoutput=%d", &option_int)) {
+    if (option_int == 1) {
+      use_sample_output = true;
       printf("USING SAMPLE OUTPUT WRAPPER!\n");
     }
     return;
   }
 
-  if (1 == sscanf(arg, "quiet=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "quiet=%d", &option_int)) {
+    if (option_int == 1) {
       setting_debugout_runquiet = true;
       printf("QUIET MODE, I'll shut up!\n");
     }
     return;
   }
 
-  if (1 == sscanf(arg, "preset=%d", &option)) {
-    settingsDefault(option);
+  if (1 == sscanf(arg, "preset=%d", &option_int)) {
+    set_default_settings(option_int);
     return;
   }
 
-  if (1 == sscanf(arg, "rec=%d", &option)) {
-    if (option == 0) {
+  if (1 == sscanf(arg, "rec=%d", &option_int)) {
+    if (option_int == 0) {
       disableReconfigure = true;
       printf("DISABLE RECONFIGURE!\n");
     }
     return;
   }
 
-  if (1 == sscanf(arg, "noros=%d", &option)) {
-    if (option == 1) {
-      disableROS         = true;
+  if (1 == sscanf(arg, "noros=%d", &option_int)) {
+    if (option_int == 1) {
+      disable_ros        = true;
       disableReconfigure = true;
       printf("DISABLE ROS (AND RECONFIGURE)!\n");
     }
     return;
   }
 
-  if (1 == sscanf(arg, "nolog=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "nolog=%d", &option_int)) {
+    if (option_int == 1) {
       setting_logStuff = false;
       printf("DISABLE LOGGING!\n");
     }
     return;
   }
-  if (1 == sscanf(arg, "reverse=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "reverse=%d", &option_int)) {
+    if (option_int == 1) {
       reverse = true;
       printf("REVERSE!\n");
     }
     return;
   }
-  if (1 == sscanf(arg, "nogui=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "nogui=%d", &option_int)) {
+    if (option_int == 1) {
       disableAllDisplay = true;
       printf("NO GUI!\n");
     }
     return;
   }
-  if (1 == sscanf(arg, "nomt=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "nomt=%d", &option_int)) {
+    if (option_int == 1) {
       multiThreading = false;
       printf("NO MultiThreading!\n");
     }
     return;
   }
-  if (1 == sscanf(arg, "prefetch=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "prefetch=%d", &option_int)) {
+    if (option_int == 1) {
       prefetch = true;
       printf("PREFETCH!\n");
     }
     return;
   }
-  if (1 == sscanf(arg, "start=%d", &option)) {
-    start = option;
+  if (1 == sscanf(arg, "start=%d", &option_int)) {
+    start = option_int;
     printf("START AT %d!\n", start);
     return;
   }
-  if (1 == sscanf(arg, "end=%d", &option)) {
-    end = option;
+  if (1 == sscanf(arg, "end=%d", &option_int)) {
+    end = option_int;
     printf("END AT %d!\n", start);
     return;
   }
@@ -244,25 +244,25 @@ void parseArgument(char* arg) {
   }
 
   if (1 == sscanf(arg, "gamma=%s", buf)) {
-    gammaCalib = buf;
-    printf("loading gammaCalib from %s!\n", gammaCalib.c_str());
+    gamma_calib = buf;
+    printf("loading gammaCalib from %s!\n", gamma_calib.c_str());
     return;
   }
 
-  if (1 == sscanf(arg, "rescale=%f", &foption)) {
-    rescale = foption;
+  if (1 == sscanf(arg, "rescale=%f", &option_float)) {
+    rescale = option_float;
     printf("RESCALE %f!\n", rescale);
     return;
   }
 
-  if (1 == sscanf(arg, "speed=%f", &foption)) {
-    playbackSpeed = foption;
-    printf("PLAYBACK SPEED %f!\n", playbackSpeed);
+  if (1 == sscanf(arg, "speed=%f", &option_float)) {
+    playback_speed = option_float;
+    printf("PLAYBACK SPEED %f!\n", playback_speed);
     return;
   }
 
-  if (1 == sscanf(arg, "save=%d", &option)) {
-    if (option == 1) {
+  if (1 == sscanf(arg, "save=%d", &option_int)) {
+    if (option_int == 1) {
       debugSaveImages = true;
       if (42 == system("rm -rf images_out"))
         printf(
@@ -289,18 +289,18 @@ void parseArgument(char* arg) {
     return;
   }
 
-  if (1 == sscanf(arg, "mode=%d", &option)) {
-    mode = option;
-    if (option == 0) {
+  if (1 == sscanf(arg, "mode=%d", &option_int)) {
+    mode = option_int;
+    if (option_int == 0) {
       printf("PHOTOMETRIC MODE WITH CALIBRATION!\n");
     }
-    if (option == 1) {
+    if (option_int == 1) {
       printf("PHOTOMETRIC MODE WITHOUT CALIBRATION!\n");
       setting_photometricCalibration = 0;
       setting_affineOptModeA = 0; //-1: fix. >=0: optimize (with prior, if > 0).
       setting_affineOptModeB = 0; //-1: fix. >=0: optimize (with prior, if > 0).
     }
-    if (option == 2) {
+    if (option_int == 2) {
       printf("PHOTOMETRIC MODE WITH PERFECT IMAGES!\n");
       setting_photometricCalibration = 0;
       setting_affineOptModeA = -1; //-1: fix. >=0: optimize (with prior, if > 0).
@@ -318,15 +318,15 @@ int main(int argc, char** argv) {
 
   // Parse commandline arguments.
   for (int i = 1; i < argc; i++) {
-    parseArgument(argv[i]);
+    parse_arg(argv[i]);
   }
 
   // Initialize the exit thread (hook ctrl+C).
-  boost::thread exThread = boost::thread(exitThread);
+  boost::thread exit_thread = boost::thread(exit_func);
 
   // Initialize the image reader.
   ImageFolderReader* reader
-    = new ImageFolderReader(source, calib, gammaCalib, vignette);
+    = new ImageFolderReader(source, calib, gamma_calib, vignette);
   reader->setGlobalCalibration();
   // Check if photometric calibration is available.
   if (setting_photometricCalibration > 0 && reader->getPhotometricGamma() == 0) {
@@ -336,166 +336,165 @@ int main(int argc, char** argv) {
     );
     exit(1);
   }
-  // Update image indices if reverse is set.
-  int lstart = start;
-  int lend   = end;
-  int linc   = 1;
+  // Update image ids if reverse is set.
+  int id_start = start;
+  int id_end   = end;
+  int id_incr  = 1;
   if (reverse) {
     printf("REVERSE!!!!");
-    lstart = end - 1;
-    if (lstart >= reader->getNumImages()) {
-      lstart = reader->getNumImages() - 1;
+    id_start = end - 1;
+    if (id_start >= reader->getNumImages()) {
+      id_start = reader->getNumImages() - 1;
     }
-    lend = start;
-    linc = -1;
+    id_end = start;
+    id_incr = -1;
   }
 
   // Initialize the full system.
-  FullSystem* fullSystem = new FullSystem();
-  fullSystem->setGammaFunction(reader->getPhotometricGamma());
-  fullSystem->linearizeOperation = (playbackSpeed == 0);
+  FullSystem* full_system = new FullSystem();
+  full_system->setGammaFunction(reader->getPhotometricGamma());
+  full_system->linearizeOperation = (playback_speed == 0);
 
-  // Initialize the output wrapper for the viewer and pusg it to the full system
+  // Initialize the output wrapper for the viewer and push it to the full system
   // if display is enabled.
   IOWrap::PangolinDSOViewer* viewer = 0;
   if (!disableAllDisplay) {
     viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
-    fullSystem->outputWrapper.push_back(viewer);
+    full_system->outputWrapper.push_back(viewer);
   }
 
-  if (useSampleOutput) {
-    fullSystem->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
+  if (use_sample_output) {
+    full_system->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
   }
 
   // Start the run thread.
-  std::thread runthread([&]() {
+  std::thread run_thread([&]() {
     // Create all ids and times to play at (for forward and reverse playback).
-    std::vector<int> idsToPlay;
-    std::vector<double> timesToPlayAt;
+    std::vector<int> ids;
+    std::vector<double> stamps;
     for (
-      int i = lstart;
-      i >= 0 && i < reader->getNumImages() && linc * i < linc * lend;
-      i += linc
+      int i = id_start;
+      i >= 0 && i < reader->getNumImages() && id_incr * i < id_incr * id_end;
+      i += id_incr
     ) {
-      idsToPlay.push_back(i);
-      if (timesToPlayAt.size() == 0) {
-        timesToPlayAt.push_back((double)0);
+      ids.push_back(i);
+      if (stamps.size() == 0) {
+        stamps.push_back((double)0);
       } else {
-        double tsThis = reader->getTimestamp(idsToPlay[idsToPlay.size() - 1]);
-        double tsPrev = reader->getTimestamp(idsToPlay[idsToPlay.size() - 2]);
-        timesToPlayAt.push_back(timesToPlayAt.back() + fabs(tsThis - tsPrev) / playbackSpeed);
+        double curr_stamp = reader->getTimestamp(ids[ids.size() - 1]);
+        double prev_stamp = reader->getTimestamp(ids[ids.size() - 2]);
+        stamps.push_back(stamps.back() + fabs(curr_stamp - prev_stamp) / playback_speed);
       }
     }
 
     // Preload all images if enabled.
-    std::vector<ImageAndExposure*> preloadedImages;
+    std::vector<ImageAndExposure*> preloaded_images;
     if (preload) {
       printf("LOADING ALL IMAGES!\n");
-      for (int j = 0; j < (int)idsToPlay.size(); j++) {
-        int i = idsToPlay[j];
-        preloadedImages.push_back(reader->getImage(i));
+      for (int j = 0; j < (int)ids.size(); j++) {
+        int id = ids[j];
+        preloaded_images.push_back(reader->getImage(id));
       }
     }
 
     // Initialize the clock for measuring elapsed time.
     struct timeval tv_start;
     gettimeofday(&tv_start, NULL);
-    clock_t started           = clock();
-    double sInitializerOffset = 0;
+    clock_t started      = clock();
+    double stamp_initial = 0;
 
     // Loop through all images to play.
-    for (int j = 0; j < (int)idsToPlay.size(); j++) {
+    for (int j = 0; j < (int)ids.size(); j++) {
       // If the system is not initialized, reset the clock.
-      if (!fullSystem->initialized) {
+      if (!full_system->initialized) {
         gettimeofday(&tv_start, NULL);
-        started            = clock();
-        sInitializerOffset = timesToPlayAt[j];
+        started       = clock();
+        stamp_initial = stamps[j];
       }
 
-      int i = idsToPlay[j];
+      int id = ids[j];
 
       // Load the image.
       ImageAndExposure* img;
       if (preload) {
-        img = preloadedImages[j];
+        img = preloaded_images[j];
       } else {
-        img = reader->getImage(i);
+        img = reader->getImage(id);
       }
 
       // Sleep or skip frames based on the playback speed and timestamps.
-      bool skipFrame = false;
-      if (playbackSpeed != 0) {
+      bool skip_frame = false;
+      if (playback_speed != 0) {
         struct timeval tv_now;
         gettimeofday(&tv_now, NULL);
-        double sSinceStart = sInitializerOffset
-                           + ((tv_now.tv_sec - tv_start.tv_sec)
-                           + (tv_now.tv_usec - tv_start.tv_usec) / (1000.0f * 1000.0f));
+        double stamp_curr = stamp_initial
+                          + ((tv_now.tv_sec - tv_start.tv_sec)
+                          + (tv_now.tv_usec - tv_start.tv_usec) / (1000.0f * 1000.0f));
 
-        if (sSinceStart < timesToPlayAt[j]) {
-          usleep((int)((timesToPlayAt[j] - sSinceStart) * 1000 * 1000));
-        } else if (sSinceStart > timesToPlayAt[j] + 0.5 + 0.1 * (j % 2)) {
+        if (stamp_curr < stamps[j]) {
+          usleep((int)((stamps[j] - stamp_curr) * 1000 * 1000));
+        } else if (stamp_curr > stamps[j] + 0.5 + 0.1 * (j % 2)) {
           printf(
             "SKIPFRAME %d (play at %f, now it is %f)!\n",
             j,
-            timesToPlayAt[j],
-            sSinceStart
+            stamps[j],
+            stamp_curr
           );
-          skipFrame = true;
+          skip_frame = true;
         }
       }
 
       // Add the active frame to the full system if it is not skipped.
-      if (!skipFrame) {
-        fullSystem->addActiveFrame(img, i);
+      if (!skip_frame) {
+        full_system->addActiveFrame(img, id);
       }
 
       // Delete the image.
       delete img;
 
       // Reset the system if it failed or a full reset is requested.
-      if (fullSystem->initFailed || setting_fullResetRequested) {
+      if (full_system->initFailed || setting_fullResetRequested) {
         if (j < 250 || setting_fullResetRequested) {
           printf("RESETTING!\n");
 
-          std::vector<IOWrap::Output3DWrapper*> wraps = fullSystem->outputWrapper;
-          delete fullSystem;
+          std::vector<IOWrap::Output3DWrapper*> wraps = full_system->outputWrapper;
+          delete full_system;
 
-          for (IOWrap::Output3DWrapper* ow : wraps) {
-            ow->reset();
+          for (IOWrap::Output3DWrapper* wrap : wraps) {
+            wrap->reset();
           }
 
-          fullSystem = new FullSystem();
-          fullSystem->setGammaFunction(reader->getPhotometricGamma());
-          fullSystem->linearizeOperation = (playbackSpeed == 0);
+          full_system = new FullSystem();
+          full_system->setGammaFunction(reader->getPhotometricGamma());
+          full_system->linearizeOperation = (playback_speed == 0);
 
-          fullSystem->outputWrapper = wraps;
+          full_system->outputWrapper = wraps;
 
           setting_fullResetRequested = false;
         }
       }
       // Break if the system is lost.
-      if (fullSystem->isLost) {
+      if (full_system->isLost) {
         printf("LOST!!\n");
         break;
       }
     }
 
-    fullSystem->blockUntilMappingIsFinished();
+    full_system->blockUntilMappingIsFinished();
 
     // Stop the clock and print the results.
     clock_t ended = clock();
     struct timeval tv_end;
     gettimeofday(&tv_end, NULL);
 
-    fullSystem->printResult("result.txt");
+    full_system->printResult("result.txt");
 
-    int numFramesProcessed = abs(idsToPlay[0] - idsToPlay.back());
-    double numSecondsProcessed
-      = fabs(reader->getTimestamp(idsToPlay[0]) - reader->getTimestamp(idsToPlay.back()));
-    double MilliSecondsTakenSingle
-      = 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC);
-    double MilliSecondsTakenMT
-      = sInitializerOffset
+    int num_frames_processed = abs(ids[0] - ids.back());
+    double num_seconds_processed
+      = fabs(reader->getTimestamp(ids[0]) - reader->getTimestamp(ids.back()));
+    double ms_taken_single = 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC);
+    double ms_taken_multi
+      = stamp_initial
       + ((tv_end.tv_sec - tv_start.tv_sec) * 1000.0f + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0f);
     printf(
       "\n======================"
@@ -505,26 +504,26 @@ int main(int argc, char** argv) {
       "\n%.3fx (single core); "
       "\n%.3fx (multi core); "
       "\n======================\n\n",
-      numFramesProcessed,
-      numFramesProcessed / numSecondsProcessed,
-      MilliSecondsTakenSingle / numFramesProcessed,
-      MilliSecondsTakenMT / (float)numFramesProcessed,
-      1000 / (MilliSecondsTakenSingle / numSecondsProcessed),
-      1000 / (MilliSecondsTakenMT / numSecondsProcessed)
+      num_frames_processed,
+      num_frames_processed / num_seconds_processed,
+      ms_taken_single / num_frames_processed,
+      ms_taken_multi / (float)num_frames_processed,
+      1000 / (ms_taken_single / num_seconds_processed),
+      1000 / (ms_taken_multi / num_seconds_processed)
     );
 
     // fullSystem->printFrameLifetimes();
 
     // Log the frame lifetimes if enabled.
     if (setting_logStuff) {
-      std::ofstream tmlog;
-      tmlog.open("logs/time.txt", std::ios::trunc | std::ios::out);
-      tmlog << 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC * reader->getNumImages())
+      std::ofstream file;
+      file.open("logs/time.txt", std::ios::trunc | std::ios::out);
+      file << 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC * reader->getNumImages())
             << " "
             << ((tv_end.tv_sec - tv_start.tv_sec) * 1000.0f + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0f) / (float)reader->getNumImages()
             << "\n";
-      tmlog.flush();
-      tmlog.close();
+      file.flush();
+      file.close();
     }
   });
 
@@ -534,16 +533,16 @@ int main(int argc, char** argv) {
   }
 
   // Join the run thread.
-  runthread.join();
+  run_thread.join();
   // Join the viewer thread.
-  for (IOWrap::Output3DWrapper* ow : fullSystem->outputWrapper) {
-    ow->join();
-    delete ow;
+  for (IOWrap::Output3DWrapper* wrap : full_system->outputWrapper) {
+    wrap->join();
+    delete wrap;
   }
 
   // Print the end messages and delete pointers.
   printf("DELETE FULLSYSTEM!\n");
-  delete fullSystem;
+  delete full_system;
 
   printf("DELETE READER!\n");
   delete reader;
