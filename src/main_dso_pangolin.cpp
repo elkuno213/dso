@@ -47,20 +47,18 @@ std::string vignette    = "";
 std::string gamma_calib = "";
 std::string source      = "";
 std::string calib       = "";
-double rescale          = 1;
+double rescale          = 1.0;
 bool reverse            = false;
 bool disable_ros        = false;
 int start               = 0;
 int end                 = 100000;
 bool prefetch           = false;
-float playback_speed    = 0; // 0 for linearize (play as fast as possible, while sequentializing
-                            // tracking & mapping). otherwise, factor on timestamps.
+float playback_speed    = 0.f; // 0 for linearize (play as fast as possible, while sequentializing
+                               // tracking & mapping). otherwise, factor on timestamps.
 bool preload            = false;
 bool use_sample_output  = false;
-
-int mode = 0;
-
-bool first_ros_spin = false;
+int mode                = 0;
+bool first_ros_spin     = false;
 
 using namespace dso;
 
@@ -95,7 +93,7 @@ void set_default_settings(const int preset) {
       preset == 0 ? "no " : "1x"
     );
 
-    playback_speed                 = (preset == 0 ? 0 : 1);
+    playback_speed                 = (preset == 0 ? 0.f : 1.f);
     preload                        = preset == 1;
     setting_desiredImmatureDensity = 1500;
     setting_desiredPointDensity    = 2000;
@@ -118,7 +116,7 @@ void set_default_settings(const int preset) {
       preset == 0 ? "no " : "5x"
     );
 
-    playback_speed                 = (preset == 2 ? 0 : 5);
+    playback_speed                 = (preset == 2 ? 0.f : 5.f);
     preload                        = preset == 3;
     setting_desiredImmatureDensity = 600;
     setting_desiredPointDensity    = 800;
@@ -329,7 +327,7 @@ int main(int argc, char** argv) {
     = new ImageFolderReader(source, calib, gamma_calib, vignette);
   reader->setGlobalCalibration();
   // Check if photometric calibration is available.
-  if (setting_photometricCalibration > 0 && reader->getPhotometricGamma() == 0) {
+  if (setting_photometricCalibration > 0 && reader->getPhotometricGamma() == nullptr) {
     printf(
       "ERROR: dont't have photometric calibation. Need to use commandline "
       "options mode=1 or mode=2 "
@@ -353,11 +351,11 @@ int main(int argc, char** argv) {
   // Initialize the full system.
   FullSystem* full_system = new FullSystem();
   full_system->setGammaFunction(reader->getPhotometricGamma());
-  full_system->linearizeOperation = (playback_speed == 0);
+  full_system->linearizeOperation = (std::abs(playback_speed) < 1e-6f);
 
   // Initialize the output wrapper for the viewer and push it to the full system
   // if display is enabled.
-  IOWrap::PangolinDSOViewer* viewer = 0;
+  IOWrap::PangolinDSOViewer* viewer = nullptr;
   if (!disableAllDisplay) {
     viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
     full_system->outputWrapper.push_back(viewer);
@@ -373,17 +371,17 @@ int main(int argc, char** argv) {
     std::vector<int> ids;
     std::vector<double> stamps;
     for (
-      int i = id_start;
-      i >= 0 && i < reader->getNumImages() && id_incr * i < id_incr * id_end;
-      i += id_incr
+      int id = id_start;
+      id >= 0 && id < reader->getNumImages() && id_incr * id < id_incr * id_end;
+      id += id_incr
     ) {
-      ids.push_back(i);
-      if (stamps.size() == 0) {
-        stamps.push_back((double)0);
+      ids.push_back(id);
+      if (stamps.empty()) {
+        stamps.push_back(0.0);
       } else {
-        double curr_stamp = reader->getTimestamp(ids[ids.size() - 1]);
-        double prev_stamp = reader->getTimestamp(ids[ids.size() - 2]);
-        stamps.push_back(stamps.back() + fabs(curr_stamp - prev_stamp) / playback_speed);
+        const double curr_stamp = reader->getTimestamp(ids.back()); // last frame
+        const double prev_stamp = reader->getTimestamp(*std::prev(ids.end(), 2)); // second-to-last
+        stamps.push_back(stamps.back() + std::abs(curr_stamp - prev_stamp) / playback_speed);
       }
     }
 
@@ -391,8 +389,7 @@ int main(int argc, char** argv) {
     std::vector<ImageAndExposure*> preloaded_images;
     if (preload) {
       printf("LOADING ALL IMAGES!\n");
-      for (int j = 0; j < (int)ids.size(); j++) {
-        int id = ids[j];
+      for (const auto& id : ids) {
         preloaded_images.push_back(reader->getImage(id));
       }
     }
@@ -401,10 +398,10 @@ int main(int argc, char** argv) {
     struct timeval tv_start;
     gettimeofday(&tv_start, NULL);
     clock_t started      = clock();
-    double stamp_initial = 0;
+    double stamp_initial = 0.0;
 
     // Loop through all images to play.
-    for (int j = 0; j < (int)ids.size(); j++) {
+    for (std::size_t j = 0; j < ids.size(); j++) {
       // If the system is not initialized, reset the clock.
       if (!full_system->initialized) {
         gettimeofday(&tv_start, NULL);
@@ -412,7 +409,7 @@ int main(int argc, char** argv) {
         stamp_initial = stamps[j];
       }
 
-      int id = ids[j];
+      const int id = ids[j];
 
       // Load the image.
       ImageAndExposure* img;
@@ -424,18 +421,18 @@ int main(int argc, char** argv) {
 
       // Sleep or skip frames based on the playback speed and timestamps.
       bool skip_frame = false;
-      if (playback_speed != 0) {
+      if (std::abs(playback_speed) > 1e-6f) {
         struct timeval tv_now;
         gettimeofday(&tv_now, NULL);
-        double stamp_curr = stamp_initial
-                          + ((tv_now.tv_sec - tv_start.tv_sec)
-                          + (tv_now.tv_usec - tv_start.tv_usec) / (1000.0f * 1000.0f));
+        const double stamp_curr
+          = stamp_initial
+          + ((tv_now.tv_sec - tv_start.tv_sec) + (tv_now.tv_usec - tv_start.tv_usec) / 1e6f);
 
         if (stamp_curr < stamps[j]) {
-          usleep((int)((stamps[j] - stamp_curr) * 1000 * 1000));
-        } else if (stamp_curr > stamps[j] + 0.5 + 0.1 * (j % 2)) {
+          usleep(static_cast<int>((stamps[j] - stamp_curr) * 1e6));
+        } else if (stamp_curr > stamps[j] + 0.5 + 0.1 * static_cast<double>(j % 2)) {
           printf(
-            "SKIPFRAME %d (play at %f, now it is %f)!\n",
+            "SKIPFRAME %zu (play at %f, now it is %f)!\n",
             j,
             stamps[j],
             stamp_curr
@@ -466,7 +463,7 @@ int main(int argc, char** argv) {
 
           full_system = new FullSystem();
           full_system->setGammaFunction(reader->getPhotometricGamma());
-          full_system->linearizeOperation = (playback_speed == 0);
+          full_system->linearizeOperation = (std::abs(playback_speed) < 1e-6f);
 
           full_system->outputWrapper = wraps;
 
@@ -489,13 +486,13 @@ int main(int argc, char** argv) {
 
     full_system->printResult("result.txt");
 
-    int num_frames_processed = abs(ids[0] - ids.back());
-    double num_seconds_processed
-      = fabs(reader->getTimestamp(ids[0]) - reader->getTimestamp(ids.back()));
-    double ms_taken_single = 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC);
-    double ms_taken_multi
+    const int num_frames_processed = std::abs(ids.front() - ids.back());
+    const double num_seconds_processed
+      = std::abs(reader->getTimestamp(ids.front()) - reader->getTimestamp(ids.back()));
+    const double ms_taken_single = 1e3 * (ended - started) / static_cast<double>(CLOCKS_PER_SEC);
+    const double ms_taken_multi
       = stamp_initial
-      + ((tv_end.tv_sec - tv_start.tv_sec) * 1000.0f + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0f);
+      + ((tv_end.tv_sec - tv_start.tv_sec) * 1e3 + (tv_end.tv_usec - tv_start.tv_usec) / 1e3);
     printf(
       "\n======================"
       "\n%d Frames (%.1f fps)"
@@ -508,8 +505,8 @@ int main(int argc, char** argv) {
       num_frames_processed / num_seconds_processed,
       ms_taken_single / num_frames_processed,
       ms_taken_multi / (float)num_frames_processed,
-      1000 / (ms_taken_single / num_seconds_processed),
-      1000 / (ms_taken_multi / num_seconds_processed)
+      1e3 / (ms_taken_single / num_seconds_processed),
+      1e3 / (ms_taken_multi / num_seconds_processed)
     );
 
     // fullSystem->printFrameLifetimes();
@@ -518,9 +515,9 @@ int main(int argc, char** argv) {
     if (setting_logStuff) {
       std::ofstream file;
       file.open("logs/time.txt", std::ios::trunc | std::ios::out);
-      file << 1000.0f * (ended - started) / (float)(CLOCKS_PER_SEC * reader->getNumImages())
+      file << 1e3 * (ended - started) / static_cast<double>(CLOCKS_PER_SEC * reader->getNumImages())
             << " "
-            << ((tv_end.tv_sec - tv_start.tv_sec) * 1000.0f + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0f) / (float)reader->getNumImages()
+            << ((tv_end.tv_sec - tv_start.tv_sec) * 1e3 + (tv_end.tv_usec - tv_start.tv_usec) / 1e3) / static_cast<double>(reader->getNumImages())
             << "\n";
       file.flush();
       file.close();
@@ -528,7 +525,7 @@ int main(int argc, char** argv) {
   });
 
   // Run the viewer if it is enabled.
-  if (viewer != 0) {
+  if (viewer != nullptr) {
     viewer->run();
   }
 
