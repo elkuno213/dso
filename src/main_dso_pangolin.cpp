@@ -28,8 +28,6 @@
 #include <unistd.h>
 #include <thread>
 
-#include <boost/thread.hpp>
-
 #include "FullSystem/FullSystem.h"
 #include "FullSystem/PixelSelector2.h"
 #include "IOWrapper/ImageDisplay.h"
@@ -319,9 +317,6 @@ int main(int argc, char** argv) {
     parse_arg(argv[i]);
   }
 
-  // Initialize the exit thread (hook ctrl+C).
-  boost::thread exit_thread = boost::thread(exit_func);
-
   // Initialize the image reader.
   ImageFolderReader* reader
     = new ImageFolderReader(source, calib, gamma_calib, vignette);
@@ -364,6 +359,9 @@ int main(int argc, char** argv) {
   if (use_sample_output) {
     full_system->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
   }
+
+  // Initialize the exit thread (hook ctrl+C).
+  std::thread exit_thread(exit_func);
 
   // Start the run thread.
   std::thread run_thread([&]() {
@@ -536,6 +534,8 @@ int main(int argc, char** argv) {
     wrap->join();
     delete wrap;
   }
+  // Join the exit thread.
+  exit_thread.join();
 
   // Print the end messages and delete pointers.
   printf("DELETE FULLSYSTEM!\n");
