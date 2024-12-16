@@ -47,7 +47,7 @@ namespace dso
 namespace IOWrap
 {
 class Output3DWrapper;
-}
+} // namespace IOWrap
 
 class PixelSelector;
 class PCSyntheticPoint;
@@ -61,12 +61,14 @@ class CoarseDistanceMap;
 
 class EnergyFunctional;
 
+// Delete the i-th element from a vector and move the last element to its place.
 template<typename T> inline void deleteOut(std::vector<T*> &v, const int i)
 {
 	delete v[i];
 	v[i] = v.back();
 	v.pop_back();
 }
+// Delete the element from a vector and move the last element to its place.
 template<typename T> inline void deleteOutPt(std::vector<T*> &v, const T* i)
 {
 	delete i;
@@ -78,6 +80,8 @@ template<typename T> inline void deleteOutPt(std::vector<T*> &v, const T* i)
 			v.pop_back();
 		}
 }
+// Delete the i-th element from a vector and increment all following elements by
+// one position.
 template<typename T> inline void deleteOutOrder(std::vector<T*> &v, const int i)
 {
 	delete v[i];
@@ -85,6 +89,8 @@ template<typename T> inline void deleteOutOrder(std::vector<T*> &v, const int i)
 		v[k-1] = v[k];
 	v.pop_back();
 }
+// Delete the element from a vector and increment all following elements by one
+// position.
 template<typename T> inline void deleteOutOrder(std::vector<T*> &v, const T* element)
 {
 	int i=-1;
@@ -104,8 +110,7 @@ template<typename T> inline void deleteOutOrder(std::vector<T*> &v, const T* ele
 
 	delete element;
 }
-
-
+// Check if a matrix contains NaN values.
 inline bool eigenTestNan(const MatXX &m, std::string msg)
 {
 	bool foundNan = false;
@@ -135,10 +140,10 @@ public:
 	FullSystem();
 	virtual ~FullSystem();
 
-	// adds a new frame, and creates point & residual structs.
+  // Add a new frame and creates point & residual structs.
 	void addActiveFrame(ImageAndExposure* image, int id);
 
-	// marginalizes a frame. drops / marginalizes points & residuals.
+  // Marginalize a frame. Drop/Marginalize points & residuals.
 	void marginalizeFrame(FrameHessian* frame);
 	void blockUntilMappingIsFinished();
 
@@ -149,7 +154,6 @@ public:
 	void debugPlot(std::string name);
 
 	void printFrameLifetimes();
-	// contains pointers to active frames
 
     std::vector<IOWrap::Output3DWrapper*> outputWrapper;
 
@@ -169,13 +173,13 @@ private:
 
 
 
-	// opt single point
+  // Optimize single point.
 	int optimizePoint(PointHessian* point, int minObs, bool flagOOB);
 	PointHessian* optimizeImmaturePoint(ImmaturePoint* point, int minObs, ImmaturePointTemporaryResidual* residuals);
 
 	double linAllPointSinle(PointHessian* point, float outlierTHSlack, bool plot);
 
-	// mainPipelineFunctions
+  // Main pipeline functions.
 	Vec4 trackNewCoarse(FrameHessian* fh);
 	void traceNewCoarse(FrameHessian* fh);
 	void activatePoints();
@@ -190,11 +194,9 @@ private:
 	void removeOutliers();
 
 
-	// set precalc values.
 	void setPrecalcValues();
 
-
-	// solce. eventually migrate to ef.
+  // Solve the system (Eventually migrate to EnergyFunctional).
 	void solveSystem(int iteration, double lambda);
 	Vec3 linearizeAll(bool fixLinearization);
 	bool doStepFromBackup(float stepfacC,float stepfacT,float stepfacR,float stepfacA,float stepfacD);
@@ -234,7 +236,7 @@ private:
 
 	std::ofstream* coarseTrackingLog;
 
-	// statistics
+  // Statistics.
 	long int statistics_lastNumOptIts;
 	long int statistics_numDroppedPoints;
 	long int statistics_numActivatedPoints;
@@ -250,15 +252,13 @@ private:
 
 
 
-
-	// =================== changed by tracker-thread. protected by trackMutex ============
+  // Variables changed by tracker thread, protected by trackMutex.
 	boost::mutex trackMutex;
 	std::vector<FrameShell*> allFrameHistory;
 	CoarseInitializer* coarseInitializer;
 	Vec5 lastCoarseRMSE;
 
-
-	// ================== changed by mapper-thread. protected by mapMutex ===============
+  // Variables changed by mapping thread, protected by mapMutex.
 	boost::mutex mapMutex;
 	std::vector<FrameShell*> allKeyFramesHistory;
 
@@ -269,7 +269,7 @@ private:
 	PixelSelector* pixelSelector;
 	CoarseDistanceMap* coarseDistanceMap;
 
-	std::vector<FrameHessian*> frameHessians;	// ONLY changed in marginalizeFrame and addFrame.
+	std::vector<FrameHessian*> frameHessians; // ONLY changed in marginalizeFrame and addFrame.
 	std::vector<PointFrameResidual*> activeResiduals;
 	float currentMinActDist;
 
@@ -277,44 +277,37 @@ private:
 	std::vector<float> allResVec;
 
 
-
-	// mutex etc. for tracker exchange.
-	boost::mutex coarseTrackerSwapMutex;			// if tracker sees that there is a new reference, tracker locks [coarseTrackerSwapMutex] and swaps the two.
-	CoarseTracker* coarseTracker_forNewKF;			// set as as reference. protected by [coarseTrackerSwapMutex].
-	CoarseTracker* coarseTracker;					// always used to track new frames. protected by [trackMutex].
+  // Variables for tracker exchange, protected by [coarseTrackerSwapMutex].
+	boost::mutex coarseTrackerSwapMutex; // If tracker sees that there is a new reference, tracker locks [coarseTrackerSwapMutex] and swaps the two.
+	CoarseTracker* coarseTracker_forNewKF; // Set as as reference. protected by [coarseTrackerSwapMutex].
+	CoarseTracker* coarseTracker; // Always used to track new frames. protected by [trackMutex].
 	float minIdJetVisTracker, maxIdJetVisTracker;
 	float minIdJetVisDebug, maxIdJetVisDebug;
 
 
 
 
-
-	// mutex for camToWorl's in shells (these are always in a good configuration).
+  // Mutex for camToWorld's in shells (these are always in a good configuration).
 	boost::mutex shellPoseMutex;
 
 
 
-/*
- * tracking always uses the newest KF as reference.
- *
- */
-
+  // Tracking always uses the newest KF as reference.
 	void makeKeyFrame( FrameHessian* fh);
 	void makeNonKeyFrame( FrameHessian* fh);
 	void deliverTrackedFrame(FrameHessian* fh, bool needKF);
 	void mappingLoop();
 
-	// tracking / mapping synchronization. All protected by [trackMapSyncMutex].
+  // Tracking / mapping synchronization. All protected by [trackMapSyncMutex].
 	boost::mutex trackMapSyncMutex;
 	boost::condition_variable trackedFrameSignal;
 	boost::condition_variable mappedFrameSignal;
 	std::deque<FrameHessian*> unmappedTrackedFrames;
-	int needNewKFAfter;	// Otherwise, a new KF is *needed that has ID bigger than [needNewKFAfter]*.
+	int needNewKFAfter;	// Otherwise, a new KF is needed that has ID bigger than [needNewKFAfter].
 	boost::thread mappingThread;
 	bool runMapping;
 	bool needToKetchupMapping;
 
 	int lastRefStopID;
 };
-}
-
+} // namespace dso
