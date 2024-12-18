@@ -44,7 +44,7 @@ namespace dso {
 void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
   // Remove frames if there are more than max frames.
   if (setting_minFrameAge > setting_maxFrames) {
-    for (int i = setting_maxFrames; i < (int)frameHessians.size(); i++) {
+    for (std::size_t i = setting_maxFrames; i < frameHessians.size(); i++) {
       FrameHessian* fh              = frameHessians[i - setting_maxFrames];
       fh->flaggedForMarginalization = true;
     }
@@ -53,10 +53,10 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
 
   // Flag frames that have not enough points for marginalization.
   int flagged = 0;
-  for (int i = 0; i < (int)frameHessians.size(); i++) {
+  for (std::size_t i = 0; i < frameHessians.size(); i++) {
     FrameHessian* fh = frameHessians[i];
-    int in  = fh->pointHessians.size() + fh->immaturePoints.size();
-    int out = fh->pointHessiansMarginalized.size() + fh->pointHessiansOut.size();
+    std::size_t in  = fh->pointHessians.size() + fh->immaturePoints.size();
+    std::size_t out = fh->pointHessiansMarginalized.size() + fh->pointHessiansOut.size();
 
     Vec2 refToFh = AffLight::fromToVecExposure(
       frameHessians.back()->ab_exposure,
@@ -66,8 +66,11 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
     );
 
     if(
-      (in < setting_minPointsRemaining * (in + out) || fabs(logf((float)refToFh[0])) > setting_maxLogAffFacInWindow) &&
-      ((int)frameHessians.size())-flagged > setting_minFrames
+      (
+        in < static_cast<std::size_t>(setting_minPointsRemaining * (in + out)) ||
+        std::abs(std::log(refToFh[0])) > setting_maxLogAffFacInWindow
+      ) &&
+      (static_cast<int>(frameHessians.size()) - flagged > setting_minFrames)
     ) {
       // printf("MARGINALIZE frame %d, as only %'d/%'d points remaining (%'d %'d
       // %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
@@ -92,9 +95,9 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
   }
 
   // Marginalize one frame which has the smallest distance score.
-  if ((int)frameHessians.size() - flagged >= setting_maxFrames) {
-    double smallestScore        = 1;
-    FrameHessian* toMarginalize = 0;
+  if (static_cast<int>(frameHessians.size()) - flagged >= setting_maxFrames) {
+    double smallestScore        = 1.0;
+    FrameHessian* toMarginalize = nullptr;
     FrameHessian* latest        = frameHessians.back();
 
     for (FrameHessian* fh : frameHessians) {
@@ -105,12 +108,12 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
       //   continue;
       // }
 
-      double distScore = 0;
+      double distScore = 0.0;
       for (FrameFramePrecalc& ffh : fh->targetPrecalc) {
         if(ffh.target->frameID > latest->frameID-setting_minFrameAge+1 || ffh.target == ffh.host) {
           continue;
         }
-        distScore += 1 / (1e-5 + ffh.distanceLL);
+        distScore += 1.0 / (1e-5 + ffh.distanceLL);
       }
       distScore *= -sqrtf(fh->targetPrecalc.back().distanceLL);
 
@@ -135,8 +138,9 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
 void FullSystem::marginalizeFrame(FrameHessian* frame) {
   // Marginalize or remove all this frames points.
 
-  assert((int)frame->pointHessians.size() == 0);
+  assert(frame->pointHessians.empty());
 
+  // Marginalize the frame in the energy functional.
   ef->marginalizeFrame(frame->efFrame);
 
   // Drop all observations of existing points in that frame.
@@ -146,13 +150,13 @@ void FullSystem::marginalizeFrame(FrameHessian* frame) {
     }
 
     for (PointHessian* ph : fh->pointHessians) {
-      for (unsigned int i = 0; i < ph->residuals.size(); i++) {
+      for (std::size_t i = 0; i < ph->residuals.size(); i++) {
         PointFrameResidual* r = ph->residuals[i];
         if (r->target == frame) {
           if (ph->lastResiduals[0].first == r) {
-            ph->lastResiduals[0].first = 0;
+            ph->lastResiduals[0].first = nullptr;
           } else if (ph->lastResiduals[1].first == r) {
-            ph->lastResiduals[1].first = 0;
+            ph->lastResiduals[1].first = nullptr;
           }
 
           if (r->host->frameID < r->target->frameID) {
@@ -183,8 +187,8 @@ void FullSystem::marginalizeFrame(FrameHessian* frame) {
   frame->shell->movedByOpt     = frame->w2c_leftEps().norm();
 
   deleteOutOrder<FrameHessian>(frameHessians, frame);
-  for (unsigned int i = 0; i < frameHessians.size(); i++) {
-    frameHessians[i]->idx = i;
+  for (std::size_t i = 0; i < frameHessians.size(); i++) {
+    frameHessians[i]->idx = static_cast<int>(i);
   }
 
   setPrecalcValues();
