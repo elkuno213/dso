@@ -1,6 +1,6 @@
 /**
 * This file is part of DSO.
-* 
+*
 * Copyright 2016 Technical University of Munich and Intel.
 * Developed by Jakob Engel <engelj at in dot tum dot de>,
 * for more information see <http://vision.in.tum.de/dso>.
@@ -30,7 +30,7 @@
  */
 
 #include "FullSystem/FullSystem.h"
- 
+
 #include "stdio.h"
 #include "util/globalFuncs.h"
 #include <Eigen/LU>
@@ -52,22 +52,23 @@ PointHessian* FullSystem::optimizeImmaturePoint(
 		ImmaturePoint* point, int minObs,
 		ImmaturePointTemporaryResidual* residuals)
 {
-	int nres = 0;
-	for(FrameHessian* fh : frameHessians)
-	{
-		if(fh != point->host)
-		{
-			residuals[nres].state_NewEnergy = residuals[nres].state_energy = 0;
-			residuals[nres].state_NewState = ResState::OUTLIER;
-			residuals[nres].state_state = ResState::IN;
-			residuals[nres].target = fh;
-			nres++;
-		}
+  // Calculate the number of frames that are not the host frame and update the
+  // residuals.
+  int nres = 0;
+  for (FrameHessian* fh : frameHessians) {
+    if (fh != point->host) {
+      residuals[nres].state_NewEnergy = residuals[nres].state_energy = 0;
+      residuals[nres].state_NewState = ResState::OUTLIER;
+      residuals[nres].state_state    = ResState::IN;
+      residuals[nres].target         = fh;
+      nres++;
+    }
 	}
 	assert(nres == ((int)frameHessians.size())-1);
 
-	bool print = false;//rand()%50==0;
+	bool print = false; // rand() % 50 == 0;
 
+  // Calculate the sum of energy of the residuals.
 	float lastEnergy = 0;
 	float lastHdd=0;
 	float lastbd=0;
@@ -85,6 +86,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
 		residuals[i].state_energy = residuals[i].state_NewEnergy;
 	}
 
+  // Check if the point is well-constrained.
 	if(!std::isfinite(lastEnergy) || lastHdd < setting_minIdepthH_act)
 	{
 		if(print)
@@ -96,6 +98,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
 	if(print) printf("Activate point. %d residuals. H=%f. Initial Energy: %f. Initial Id=%f\n" ,
 			nres, lastHdd,lastEnergy,currentIdepth);
 
+  // Calculate the smallest sum of energy through a number of iterations.
 	float lambda = 0.1;
 	for(int iteration=0;iteration<setting_GNItsOnPointActivation;iteration++)
 	{
@@ -147,25 +150,27 @@ PointHessian* FullSystem::optimizeImmaturePoint(
 			break;
 	}
 
+  // Check if the point's depth is finite.
 	if(!std::isfinite(currentIdepth))
 	{
 		printf("MAJOR ERROR! point idepth is nan after initialization (%f).\n", currentIdepth);
-		return (PointHessian*)((long)(-1));		// yeah I'm like 99% sure this is OK on 32bit systems.
+		return (PointHessian*)((long)(-1)); // Yeah I'm like 99% sure this is OK on 32bit systems.
 	}
 
-
+  // Count the number of good residuals.
 	int numGoodRes=0;
 	for(int i=0;i<nres;i++)
 		if(residuals[i].state_state == ResState::IN) numGoodRes++;
 
+  // Check if the number of good residuals is below the minimum.
 	if(numGoodRes < minObs)
 	{
 		if(print) printf("OptPoint: OUTLIER!\n");
-		return (PointHessian*)((long)(-1));		// yeah I'm like 99% sure this is OK on 32bit systems.
+		return (PointHessian*)((long)(-1)); // Yeah I'm like 99% sure this is OK on 32bit systems.
 	}
 
 
-
+  // Create a new point and add the residuals.
 	PointHessian* p = new PointHessian(point, &Hcalib);
 	if(!std::isfinite(p->energyTH)) {delete p; return (PointHessian*)((long)(-1));}
 
