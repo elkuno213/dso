@@ -39,35 +39,35 @@ namespace dso {
 
 PointHessian* FullSystem::optimizeImmaturePoint(
   ImmaturePoint* point,
-	int minObs,
-	ImmaturePointTemporaryResidual* residuals
+  int minObs,
+  ImmaturePointTemporaryResidual* residuals
 ) {
   // Calculate the number of frames that are not the host frame and update the
   // residuals.
   int nres = 0;
   for (FrameHessian* fh : frameHessians) {
     if (fh != point->host) {
-      residuals[nres].state_NewEnergy = residuals[nres].state_energy = 0;
+      residuals[nres].state_NewEnergy = residuals[nres].state_energy = 0.0;
       residuals[nres].state_NewState = ResState::OUTLIER;
       residuals[nres].state_state    = ResState::IN;
       residuals[nres].target         = fh;
       nres++;
     }
   }
-  assert(nres == ((int)frameHessians.size()) - 1);
+  assert(nres == static_cast<int>(frameHessians.size() - 1));
 
   bool print = false; // rand() % 50 == 0;
 
   // Calculate the sum of energy of the residuals.
-  float lastEnergy    = 0;
-  float lastHdd       = 0;
-  float lastbd        = 0;
+  float lastEnergy    = 0.0f;
+  float lastHdd       = 0.0f;
+  float lastbd        = 0.0f;
   float currentIdepth = (point->idepth_max + point->idepth_min) * 0.5f;
 
   for (int i = 0; i < nres; i++) {
     lastEnergy += point->linearizeResidual(
       &Hcalib,
-      1000,
+      1000.0f,
       residuals + i,
       lastHdd,
       lastbd,
@@ -87,7 +87,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
         lastEnergy
       );
     }
-    return 0;
+    return nullptr;
   }
 
   if (print) {
@@ -101,25 +101,18 @@ PointHessian* FullSystem::optimizeImmaturePoint(
   }
 
   // Calculate the smallest sum of energy through a number of iterations.
-  float lambda = 0.1;
+  float lambda = 0.1f;
   for (int iteration = 0; iteration < setting_GNItsOnPointActivation; iteration++) {
     float H = lastHdd;
-    H *= 1 + lambda;
-    float step      = (1.0 / H) * lastbd;
+    H *= 1.0f + lambda;
+    float step      = (1.0f / H) * lastbd;
     float newIdepth = currentIdepth - step;
 
-    float newHdd    = 0;
-    float newbd     = 0;
-    float newEnergy = 0;
+    float newHdd    = 0.0f;
+    float newbd     = 0.0f;
+    float newEnergy = 0.0f;
     for (int i = 0; i < nres; i++) {
-      newEnergy += point->linearizeResidual(
-        &Hcalib,
-        1,
-        residuals + i,
-        newHdd,
-        newbd,
-        newIdepth
-      );
+      newEnergy += point->linearizeResidual(&Hcalib, 1.0f, residuals + i, newHdd, newbd, newIdepth);
     }
 
     if (!std::isfinite(lastEnergy) || newHdd < setting_minIdepthH_act) {
@@ -131,7 +124,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
           lastEnergy
         );
       }
-      return 0;
+      return nullptr;
     }
 
     if (print) {
@@ -139,7 +132,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
         "%s %d (L %.2f) %s: %f -> %f (idepth %f)!\n",
         (true || newEnergy < lastEnergy) ? "ACCEPT" : "REJECT",
         iteration,
-        log10(lambda),
+        std::log10(lambda),
         "",
         lastEnergy,
         newEnergy,
@@ -157,12 +150,12 @@ PointHessian* FullSystem::optimizeImmaturePoint(
         residuals[i].state_energy = residuals[i].state_NewEnergy;
       }
 
-      lambda *= 0.5;
+      lambda *= 0.5f;
     } else {
-      lambda *= 5;
+      lambda *= 5.0f;
     }
 
-    if (fabsf(step) < 0.0001 * currentIdepth) {
+    if (std::abs(step) < 0.0001f * currentIdepth) {
       break;
     }
   }
@@ -199,9 +192,9 @@ PointHessian* FullSystem::optimizeImmaturePoint(
     return (PointHessian*)((long)(-1));
   }
 
-  p->lastResiduals[0].first  = 0;
+  p->lastResiduals[0].first  = nullptr;
   p->lastResiduals[0].second = ResState::OOB;
-  p->lastResiduals[1].first  = 0;
+  p->lastResiduals[1].first  = nullptr;
   p->lastResiduals[1].second = ResState::OOB;
   p->setIdepthZero(currentIdepth);
   p->setIdepth(currentIdepth);
@@ -209,8 +202,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
 
   for (int i = 0; i < nres; i++)
     if (residuals[i].state_state == ResState::IN) {
-      PointFrameResidual* r
-        = new PointFrameResidual(p, p->host, residuals[i].target);
+      PointFrameResidual* r = new PointFrameResidual(p, p->host, residuals[i].target);
       r->state_NewEnergy = r->state_energy = 0;
       r->state_NewState                    = ResState::OUTLIER;
       r->setState(ResState::IN);
@@ -219,7 +211,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
       if (r->target == frameHessians.back()) {
         p->lastResiduals[0].first  = r;
         p->lastResiduals[0].second = ResState::IN;
-      } else if(r->target == (frameHessians.size() < 2 ? 0 : frameHessians[frameHessians.size() - 2])) {
+      } else if(r->target == (frameHessians.size() < 2 ? nullptr : frameHessians[frameHessians.size() - 2])) {
         p->lastResiduals[1].first  = r;
         p->lastResiduals[1].second = ResState::IN;
       }
