@@ -1,6 +1,6 @@
 /**
 * This file is part of DSO.
-* 
+*
 * Copyright 2016 Technical University of Munich and Intel.
 * Developed by Jakob Engel <engelj at in dot tum dot de>,
 * for more information see <http://vision.in.tum.de/dso>.
@@ -30,7 +30,7 @@
  */
 
 #include "FullSystem/FullSystem.h"
- 
+
 #include "stdio.h"
 #include "util/globalFuncs.h"
 #include <Eigen/LU>
@@ -51,16 +51,22 @@ namespace dso
 
 	void FullSystem::debugPlotTracking()
 	{
+  // No display if disabled.
 		if(disableAllDisplay) return;
+  // No display if render setting is disabled.
 		if(!setting_render_plotTrackingFull) return;
+
+  // Calculate the number of pixels.
 		int wh = hG[0]*wG[0];
 
+  // Loop through all frames and make images for each frame.
 		int idx=0;
 		for(FrameHessian* f : frameHessians)
 		{
 			std::vector<MinimalImageB3* > images;
 
-			// make images for all frames. will be deleted by the FrameHessian's destructor.
+    // Make images for all frames. They will be deleted by the FrameHessian's
+    // destructor.
 			for(FrameHessian* f2 : frameHessians)
 				if(f2->debugImage == 0) f2->debugImage = new MinimalImageB3(wG[0], hG[0]);
 
@@ -75,7 +81,7 @@ namespace dso
 
 				for(int i=0;i<wh;i++)
 				{
-					// BRIGHTNESS TRANSFER
+        // Transfer brightness.
 					float colL = affL[0] * fd[i][0] + affL[1];
 					if(colL<0) colL=0; if(colL>255) colL =255;
 					debugImage->at(i) = Vec3b(colL, colL, colL);
@@ -94,7 +100,7 @@ namespace dso
 				}
 			}
 
-
+    // Add the images to the visualization wrapper.
 			char buf[100];
 			snprintf(buf, 100, "IMG %d", idx);
 			IOWrap::displayImageStitch(buf, images);
@@ -108,13 +114,16 @@ namespace dso
 
 	void FullSystem::debugPlot(std::string name)
 	{
+  // No display if disabled.
 		if(disableAllDisplay) return;
+  // No display if render setting is disabled.
 		if(!setting_render_renderWindowFrames) return;
+
 		std::vector<MinimalImageB3* > images;
 
 
 
-
+  // Calculate the maximum and minimum IDs.
 		float minID=0, maxID=0;
 		if((int)(freeDebugParam5+0.5f) == 7 || (debugSaveImages&&false))
 		{
@@ -136,7 +145,7 @@ namespace dso
 			maxID = allID[(int)(n*0.95)];
 
 
-			// slowly adapt: change by maximum 10% of old span.
+    // Slowly adapt: change by maximum 10% of old span.
 			float maxChange = 0.1*(maxIdJetVisDebug - minIdJetVisDebug);
 			if(maxIdJetVisDebug < 0  || minIdJetVisDebug < 0 ) maxChange = 1e5;
 
@@ -167,13 +176,13 @@ namespace dso
 
 
 
-
+  // Loop through all frames and make images for each frame.
 		int wh = hG[0]*wG[0];
 		for(unsigned int f=0;f<frameHessians.size();f++)
 		{
 			MinimalImageB3* img = new MinimalImageB3(wG[0],hG[0]);
 			images.push_back(img);
-			//float* fd = frameHessians[f]->I;
+    // float* fd = frameHessians[f]->I;
 			Eigen::Vector3f* fd = frameHessians[f]->dI;
 
 
@@ -311,14 +320,16 @@ namespace dso
 				}
 			}
 		}
+  // Add the images to the visualization wrapper.
 		IOWrap::displayImageStitch(name.c_str(), images);
 		IOWrap::waitKey(5);
 
+  // Delete the images.
 		for(unsigned int i=0;i<images.size();i++)
 			delete images[i];
 
 
-
+  // Save the images if debug setting is enabled.
 		if((debugSaveImages&&false))
 		{
 			for(unsigned int f=0;f<frameHessians.size();f++)
