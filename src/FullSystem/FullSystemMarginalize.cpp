@@ -1,6 +1,6 @@
 /**
 * This file is part of DSO.
-* 
+*
 * Copyright 2016 Technical University of Munich and Intel.
 * Developed by Jakob Engel <engelj at in dot tum dot de>,
 * for more information see <http://vision.in.tum.de/dso>.
@@ -21,16 +21,8 @@
 * along with DSO. If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-/*
- * KFBuffer.cpp
- *
- *  Created on: Jan 7, 2014
- *      Author: engelj
- */
-
 #include "FullSystem/FullSystem.h"
- 
+
 #include "stdio.h"
 #include "util/globalFuncs.h"
 #include <Eigen/LU>
@@ -57,6 +49,7 @@ namespace dso
 
 void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 {
+  // Remove frames if there are more than max frames.
 	if(setting_minFrameAge > setting_maxFrames)
 	{
 		for(int i=setting_maxFrames;i<(int)frameHessians.size();i++)
@@ -68,8 +61,8 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 	}
 
 
+  // Flag frames that have not enough points for marginalization.
 	int flagged = 0;
-	// marginalize all frames that have not enough points.
 	for(int i=0;i<(int)frameHessians.size();i++)
 	{
 		FrameHessian* fh = frameHessians[i];
@@ -84,27 +77,27 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 		if( (in < setting_minPointsRemaining *(in+out) || fabs(logf((float)refToFh[0])) > setting_maxLogAffFacInWindow)
 				&& ((int)frameHessians.size())-flagged > setting_minFrames)
 		{
-//			printf("MARGINALIZE frame %d, as only %'d/%'d points remaining (%'d %'d %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
-//					fh->frameID, in, in+out,
-//					(int)fh->pointHessians.size(), (int)fh->immaturePoints.size(),
-//					(int)fh->pointHessiansMarginalized.size(), (int)fh->pointHessiansOut.size(),
-//					visInLast, outInLast,
-//					fh->statistics_tracesCreatedForThisFrame, fh->statistics_pointsActivatedForThisFrame);
+      // printf("MARGINALIZE frame %d, as only %'d/%'d points remaining (%'d %'d %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
+      //   fh->frameID, in, in+out,
+      //   (int)fh->pointHessians.size(), (int)fh->immaturePoints.size(),
+      //   (int)fh->pointHessiansMarginalized.size(), (int)fh->pointHessiansOut.size(),
+      //   visInLast, outInLast,
+      //   fh->statistics_tracesCreatedForThisFrame, fh->statistics_pointsActivatedForThisFrame);
 			fh->flaggedForMarginalization = true;
 			flagged++;
 		}
 		else
 		{
-//			printf("May Keep frame %d, as %'d/%'d points remaining (%'d %'d %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
-//					fh->frameID, in, in+out,
-//					(int)fh->pointHessians.size(), (int)fh->immaturePoints.size(),
-//					(int)fh->pointHessiansMarginalized.size(), (int)fh->pointHessiansOut.size(),
-//					visInLast, outInLast,
-//					fh->statistics_tracesCreatedForThisFrame, fh->statistics_pointsActivatedForThisFrame);
+      // printf("May Keep frame %d, as %'d/%'d points remaining (%'d %'d %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
+      //   fh->frameID, in, in+out,
+      //   (int)fh->pointHessians.size(), (int)fh->immaturePoints.size(),
+      //   (int)fh->pointHessiansMarginalized.size(), (int)fh->pointHessiansOut.size(),
+      //   visInLast, outInLast,
+      //   fh->statistics_tracesCreatedForThisFrame, fh->statistics_pointsActivatedForThisFrame);
 		}
 	}
 
-	// marginalize one.
+  // Marginalize one frame which has the smallest distance score.
 	if((int)frameHessians.size()-flagged >= setting_maxFrames)
 	{
 		double smallestScore = 1;
@@ -115,7 +108,7 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 		for(FrameHessian* fh : frameHessians)
 		{
 			if(fh->frameID > latest->frameID-setting_minFrameAge || fh->frameID == 0) continue;
-			//if(fh==frameHessians.front() == 0) continue;
+      // if(fh==frameHessians.front() == 0) continue;
 
 			double distScore = 0;
 			for(FrameFramePrecalc &ffh : fh->targetPrecalc)
@@ -134,16 +127,16 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 			}
 		}
 
-//		printf("MARGINALIZE frame %d, as it is the closest (score %.2f)!\n",
-//				toMarginalize->frameID, smallestScore);
+    // printf("MARGINALIZE frame %d, as it is the closest (score %.2f)!\n",
+    //   toMarginalize->frameID, smallestScore);
 		toMarginalize->flaggedForMarginalization = true;
 		flagged++;
 	}
 
-//	printf("FRAMES LEFT: ");
-//	for(FrameHessian* fh : frameHessians)
-//		printf("%d ", fh->frameID);
-//	printf("\n");
+  // printf("FRAMES LEFT: ");
+  // for(FrameHessian* fh : frameHessians)
+  //   printf("%d ", fh->frameID);
+  // printf("\n");
 }
 
 
@@ -151,15 +144,14 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH)
 
 void FullSystem::marginalizeFrame(FrameHessian* frame)
 {
-	// marginalize or remove all this frames points.
+  // Marginalize or remove all this frames points.
 
 	assert((int)frame->pointHessians.size()==0);
 
 
 	ef->marginalizeFrame(frame->efFrame);
 
-	// drop all observations of existing points in that frame.
-
+  // Drop all observations of existing points in that frame.
 	for(FrameHessian* fh : frameHessians)
 	{
 		if(fh==frame) continue;
@@ -191,7 +183,7 @@ void FullSystem::marginalizeFrame(FrameHessian* frame)
 	}
 
 
-
+  // Publish the keyframes to visualization wrapper.
     {
         std::vector<FrameHessian*> v;
         v.push_back(frame);
@@ -199,7 +191,7 @@ void FullSystem::marginalizeFrame(FrameHessian* frame)
             ow->publishKeyframes(v, true, &Hcalib);
     }
 
-
+  // Remove the frame from the list.
 	frame->shell->marginalizedAt = frameHessians.back()->shell->id;
 	frame->shell->movedByOpt = frame->w2c_leftEps().norm();
 
@@ -217,4 +209,4 @@ void FullSystem::marginalizeFrame(FrameHessian* frame)
 
 
 
-}
+} // namespace dso
