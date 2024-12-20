@@ -45,7 +45,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
   // Calculate the number of frames that are not the host frame and update the
   // residuals.
   int nres = 0;
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     if (fh != point->host) {
       residuals[nres].state_NewEnergy = residuals[nres].state_energy = 0.0;
       residuals[nres].state_NewState = ResState::OUTLIER;
@@ -54,7 +54,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
       nres++;
     }
   }
-  assert(nres == static_cast<int>(frameHessians.size() - 1));
+  assert(nres == static_cast<int>(hessian_frames_.size() - 1));
 
   bool print = false; // rand() % 50 == 0;
 
@@ -208,10 +208,10 @@ PointHessian* FullSystem::optimizeImmaturePoint(
       r->setState(ResState::IN);
       p->residuals.push_back(r);
 
-      if (r->target == frameHessians.back()) {
+      if (r->target == hessian_frames_.back()) {
         p->lastResiduals[0].first  = r;
         p->lastResiduals[0].second = ResState::IN;
-      } else if(r->target == (frameHessians.size() < 2 ? nullptr : frameHessians[frameHessians.size() - 2])) {
+      } else if(r->target == (hessian_frames_.size() < 2 ? nullptr : hessian_frames_[hessian_frames_.size() - 2])) {
         p->lastResiduals[1].first  = r;
         p->lastResiduals[1].second = ResState::IN;
       }
@@ -221,7 +221,7 @@ PointHessian* FullSystem::optimizeImmaturePoint(
     printf("point activated!\n");
   }
 
-  statistics_numActivatedPoints++;
+  stats_num_activated_pts_++;
   return p;
 }
 

@@ -98,7 +98,7 @@ void FullSystem::setNewFrameEnergyTH() {
   // Collect all residuals and make decision on TH.
   allResVec.clear();
   allResVec.reserve(activeResiduals.size() * 2);
-  FrameHessian* newFrame = frameHessians.back();
+  FrameHessian* newFrame = hessian_frames_.back();
 
   for (PointFrameResidual* r : activeResiduals) {
     if (r->state_NewEnergyWithOutlier >= 0.0 && r->target == newFrame) {
@@ -193,7 +193,7 @@ Vec3 FullSystem::linearizeAll(bool fixLinearization) {
 
         for (std::size_t k = 0; k < ph->residuals.size(); k++) {
           if (ph->residuals[k] == r) {
-            ef->dropResidual(r->efResidual);
+            ef_->dropResidual(r->efResidual);
             deleteOut<PointFrameResidual>(ph->residuals, static_cast<int>(k));
             nResRemoved++;
             break;
@@ -230,7 +230,7 @@ bool FullSystem::doStepFromBackup(
   if (setting_solverMode & SOLVER_MOMENTUM) {
     // Calculate sums for momentum mode.
     Hcalib.setValue(Hcalib.value_backup + Hcalib.step);
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       Vec10 step = fh->step;
       step.head<6>() += 0.5f * (fh->step_backup.head<6>());
 
@@ -253,7 +253,7 @@ bool FullSystem::doStepFromBackup(
   } else {
     // Calculate sums for non-momentum mode.
     Hcalib.setValue(Hcalib.value_backup + stepfacC * Hcalib.step);
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       fh->setState(fh->state_backup + pstepfac.cwiseProduct(fh->step));
       sumA += fh->step[6] * fh->step[6];
       sumB += fh->step[7] * fh->step[7];
@@ -271,10 +271,10 @@ bool FullSystem::doStepFromBackup(
     }
   }
 
-  sumA   /= frameHessians.size();
-  sumB   /= frameHessians.size();
-  sumR   /= frameHessians.size();
-  sumT   /= frameHessians.size();
+  sumA   /= hessian_frames_.size();
+  sumB   /= hessian_frames_.size();
+  sumR   /= hessian_frames_.size();
+  sumT   /= hessian_frames_.size();
   sumID  /= numID;
   sumNID /= numID;
 
@@ -308,7 +308,7 @@ void FullSystem::backupState(bool backupLastStep) {
     if (backupLastStep) {
       Hcalib.step_backup  = Hcalib.step;
       Hcalib.value_backup = Hcalib.value;
-      for (FrameHessian* fh : frameHessians) {
+      for (FrameHessian* fh : hessian_frames_) {
         fh->step_backup  = fh->step;
         fh->state_backup = fh->get_state();
         for (PointHessian* ph : fh->pointHessians) {
@@ -319,7 +319,7 @@ void FullSystem::backupState(bool backupLastStep) {
     } else {
       Hcalib.step_backup.setZero();
       Hcalib.value_backup = Hcalib.value;
-      for (FrameHessian* fh : frameHessians) {
+      for (FrameHessian* fh : hessian_frames_) {
         fh->step_backup.setZero();
         fh->state_backup = fh->get_state();
         for (PointHessian* ph : fh->pointHessians) {
@@ -331,7 +331,7 @@ void FullSystem::backupState(bool backupLastStep) {
   } else {
     // Backup state and step for non-momentum mode.
     Hcalib.value_backup = Hcalib.value;
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       fh->state_backup = fh->get_state();
       for (PointHessian* ph : fh->pointHessians) {
         ph->idepth_backup = ph->idepth;
@@ -343,7 +343,7 @@ void FullSystem::backupState(bool backupLastStep) {
 // Set linearization point.
 void FullSystem::loadSateBackup() {
   Hcalib.setValue(Hcalib.value_backup);
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     fh->setState(fh->state_backup);
     for (PointHessian* ph : fh->pointHessians) {
       ph->setIdepth(ph->idepth_backup);
@@ -362,7 +362,7 @@ double FullSystem::calcMEnergy() {
   // calculate (x-x0)^T * [2b + H * (x-x0)] for everything saved in L.
   // ef->makeIDX();
   // ef->setDeltaF(&Hcalib);
-  return ef->calcMEnergyF();
+  return ef_->calcMEnergyF();
 }
 
 void FullSystem::printOptRes(
@@ -377,22 +377,22 @@ void FullSystem::printOptRes(
   printf(
     "A(%f)=(AV %.3f). Num: A(%'d) + M(%'d); ab %f %f!\n",
     res[0],
-    std::sqrt(static_cast<float>(res[0] / (patternNum * ef->resInA))),
-    ef->resInA,
-    ef->resInM,
+    std::sqrt(static_cast<float>(res[0] / (patternNum * ef_->resInA))),
+    ef_->resInA,
+    ef_->resInM,
     a,
     b
   );
 }
 
 float FullSystem::optimize(int mnumOptIts) {
-  if (frameHessians.size() < 2) {
+  if (hessian_frames_.size() < 2) {
     return 0.0f;
   }
-  if (frameHessians.size() < 3) {
+  if (hessian_frames_.size() < 3) {
     mnumOptIts = 20;
   }
-  if (frameHessians.size() < 4) {
+  if (hessian_frames_.size() < 4) {
     mnumOptIts = 15;
   }
 
@@ -400,7 +400,7 @@ float FullSystem::optimize(int mnumOptIts) {
   activeResiduals.clear();
   int numPoints = 0;
   int numLRes   = 0;
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     for (PointHessian* ph : fh->pointHessians) {
       for (PointFrameResidual* r : ph->residuals) {
         if (!r->efResidual->isLinearized) {
@@ -418,7 +418,7 @@ float FullSystem::optimize(int mnumOptIts) {
   if (!setting_debugout_runquiet) {
     printf(
       "OPTIMIZE %d pts, %zu active res, %d lin res!\n",
-      ef->nPoints,
+      ef_->nPoints,
       activeResiduals.size(),
       numLRes
     );
@@ -449,8 +449,8 @@ float FullSystem::optimize(int mnumOptIts) {
       lastEnergyM,
       0.0,
       0.0,
-      frameHessians.back()->aff_g2l().a,
-      frameHessians.back()->aff_g2l().b
+      hessian_frames_.back()->aff_g2l().a,
+      hessian_frames_.back()->aff_g2l().b
     );
   }
 
@@ -458,15 +458,15 @@ float FullSystem::optimize(int mnumOptIts) {
 
   double lambda  = 1e-1;
   float stepsize = 1.0f;
-  VecX previousX = VecX::Constant(static_cast<std::size_t>(CPARS + 8 * frameHessians.size()), NAN);
+  VecX previousX = VecX::Constant(static_cast<std::size_t>(CPARS + 8 * hessian_frames_.size()), NAN);
   for (int iteration = 0; iteration < mnumOptIts; iteration++) {
     // Solve the system.
     backupState(iteration != 0);
     // solveSystemNew(0);
     solveSystem(iteration, lambda);
-    double incDirChange = (1e-20 + previousX.dot(ef->lastX))
-                        / (1e-20 + previousX.norm() * ef->lastX.norm());
-    previousX = ef->lastX;
+    double incDirChange = (1e-20 + previousX.dot(ef_->lastX))
+                        / (1e-20 + previousX.norm() * ef_->lastX.norm());
+    previousX = ef_->lastX;
 
     if (std::isfinite(incDirChange) && (setting_solverMode & SOLVER_STEPMOMENTUM)) {
       float newStepsize = std::exp(incDirChange * 1.4f);
@@ -509,8 +509,8 @@ float FullSystem::optimize(int mnumOptIts) {
         newEnergyM,
         0.0,
         0.0,
-        frameHessians.back()->aff_g2l().a,
-        frameHessians.back()->aff_g2l().b
+        hessian_frames_.back()->aff_g2l().a,
+        hessian_frames_.back()->aff_g2l().b
       );
     }
 
@@ -549,12 +549,12 @@ float FullSystem::optimize(int mnumOptIts) {
   }
 
   Vec10 newStateZero         = Vec10::Zero();
-  newStateZero.segment<2>(6) = frameHessians.back()->get_state().segment<2>(6);
+  newStateZero.segment<2>(6) = hessian_frames_.back()->get_state().segment<2>(6);
 
-  frameHessians.back()->setEvalPT(frameHessians.back()->PRE_worldToCam, newStateZero);
+  hessian_frames_.back()->setEvalPT(hessian_frames_.back()->PRE_worldToCam, newStateZero);
   EFDeltaValid    = false;
   EFAdjointsValid = false;
-  ef->setAdjointsF(&Hcalib);
+  ef_->setAdjointsF(&Hcalib);
   setPrecalcValues();
 
   lastEnergy = linearizeAll(true);
@@ -562,23 +562,23 @@ float FullSystem::optimize(int mnumOptIts) {
   // Check if the tracking failed.
   if (!std::isfinite(lastEnergy[0]) || !std::isfinite(lastEnergy[1]) || !std::isfinite(lastEnergy[2])) {
     printf("KF Tracking failed: LOST!\n");
-    isLost = true;
+    is_lost_ = true;
   }
 
-  statistics_lastFineTrackRMSE = std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)));
+  statistics_lastFineTrackRMSE = std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef_->resInA)));
 
   // Log the calibration if requested.
-  if (calibLog != nullptr) {
-    (*calibLog) << Hcalib.value_scaled.transpose() << " "
-                << frameHessians.back()->get_state_scaled().transpose() << " "
-                << std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)))
-                << " " << ef->resInM << "\n";
-    calibLog->flush();
+  if (calib_logger_ != nullptr) {
+    (*calib_logger_) << Hcalib.value_scaled.transpose() << " "
+                << hessian_frames_.back()->get_state_scaled().transpose() << " "
+                << std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef_->resInA)))
+                << " " << ef_->resInM << "\n";
+    calib_logger_->flush();
   }
 
   {
-    boost::unique_lock<boost::mutex> crlock(shellPoseMutex);
-    for (FrameHessian* fh : frameHessians) {
+    boost::unique_lock<boost::mutex> crlock(frame_pose_mutex_);
+    for (FrameHessian* fh : hessian_frames_) {
       fh->shell->camToWorld = fh->PRE_camToWorld;
       fh->shell->aff_g2l    = fh->aff_g2l();
     }
@@ -586,18 +586,18 @@ float FullSystem::optimize(int mnumOptIts) {
 
   debugPlotTracking();
 
-  return std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)));
+  return std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef_->resInA)));
 }
 
 void FullSystem::solveSystem(int iteration, double lambda) {
-  ef->lastNullspaces_forLogging = getNullspaces(
-    ef->lastNullspaces_pose,
-    ef->lastNullspaces_scale,
-    ef->lastNullspaces_affA,
-    ef->lastNullspaces_affB
+  ef_->lastNullspaces_forLogging = getNullspaces(
+    ef_->lastNullspaces_pose,
+    ef_->lastNullspaces_scale,
+    ef_->lastNullspaces_affA,
+    ef_->lastNullspaces_affB
   );
 
-  ef->solveSystemF(iteration, lambda, &Hcalib);
+  ef_->solveSystemF(iteration, lambda, &Hcalib);
 }
 
 double FullSystem::calcLEnergy() {
@@ -606,14 +606,14 @@ double FullSystem::calcLEnergy() {
     return 0.0;
   }
 
-  double Ef = ef->calcLEnergyF_MT();
+  double Ef = ef_->calcLEnergyF_MT();
   return Ef;
 }
 
 void FullSystem::removeOutliers() {
   // Remove outliers of all points of all frames which has no residuals.
   int numPointsDropped = 0;
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     for (unsigned int i = 0; i < fh->pointHessians.size(); i++) {
       PointHessian* ph = fh->pointHessians[i];
       if (ph == nullptr) {
@@ -630,7 +630,7 @@ void FullSystem::removeOutliers() {
       }
     }
   }
-  ef->dropPointsF();
+  ef_->dropPointsF();
 }
 
 std::vector<VecX> FullSystem::getNullspaces(
@@ -645,12 +645,12 @@ std::vector<VecX> FullSystem::getNullspaces(
   nullspaces_affA.clear();
   nullspaces_affB.clear();
 
-  int n = static_cast<int>(CPARS + frameHessians.size() * 8);
+  int n = static_cast<int>(CPARS + hessian_frames_.size() * 8);
   std::vector<VecX> nullspaces_x0_pre;
   for (int i = 0; i < 6; i++) {
     VecX nullspace_x0(n);
     nullspace_x0.setZero();
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       nullspace_x0.segment<6>(CPARS + fh->idx * 8) = fh->nullspaces_pose.col(i);
       nullspace_x0.segment<3>(CPARS + fh->idx * 8) *= SCALE_XI_TRANS_INVERSE;
       nullspace_x0.segment<3>(CPARS + fh->idx * 8 + 3) *= SCALE_XI_ROT_INVERSE;
@@ -661,7 +661,7 @@ std::vector<VecX> FullSystem::getNullspaces(
   for (int i = 0; i < 2; i++) {
     VecX nullspace_x0(n);
     nullspace_x0.setZero();
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       nullspace_x0.segment<2>(CPARS + fh->idx * 8 + 6) = fh->nullspaces_affine.col(i).head<2>();
       nullspace_x0[CPARS + fh->idx * 8 + 6] *= SCALE_A_INVERSE;
       nullspace_x0[CPARS + fh->idx * 8 + 7] *= SCALE_B_INVERSE;
@@ -677,7 +677,7 @@ std::vector<VecX> FullSystem::getNullspaces(
 
   VecX nullspace_x0(n);
   nullspace_x0.setZero();
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     nullspace_x0.segment<6>(CPARS + fh->idx * 8) = fh->nullspaces_scale;
     nullspace_x0.segment<3>(CPARS + fh->idx * 8) *= SCALE_XI_TRANS_INVERSE;
     nullspace_x0.segment<3>(CPARS + fh->idx * 8 + 3) *= SCALE_XI_ROT_INVERSE;

@@ -44,8 +44,8 @@ namespace dso {
 void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
   // Remove frames if there are more than max frames.
   if (setting_minFrameAge > setting_maxFrames) {
-    for (std::size_t i = setting_maxFrames; i < frameHessians.size(); i++) {
-      FrameHessian* fh              = frameHessians[i - setting_maxFrames];
+    for (std::size_t i = setting_maxFrames; i < hessian_frames_.size(); i++) {
+      FrameHessian* fh              = hessian_frames_[i - setting_maxFrames];
       fh->flaggedForMarginalization = true;
     }
     return;
@@ -53,15 +53,15 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
 
   // Flag frames that have not enough points for marginalization.
   int flagged = 0;
-  for (std::size_t i = 0; i < frameHessians.size(); i++) {
-    FrameHessian* fh = frameHessians[i];
+  for (std::size_t i = 0; i < hessian_frames_.size(); i++) {
+    FrameHessian* fh = hessian_frames_[i];
     std::size_t in  = fh->pointHessians.size() + fh->immaturePoints.size();
     std::size_t out = fh->pointHessiansMarginalized.size() + fh->pointHessiansOut.size();
 
     Vec2 refToFh = AffLight::fromToVecExposure(
-      frameHessians.back()->ab_exposure,
+      hessian_frames_.back()->ab_exposure,
       fh->ab_exposure,
-      frameHessians.back()->aff_g2l(),
+      hessian_frames_.back()->aff_g2l(),
       fh->aff_g2l()
     );
 
@@ -70,7 +70,7 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
         in < static_cast<std::size_t>(setting_minPointsRemaining * (in + out)) ||
         std::abs(std::log(refToFh[0])) > setting_maxLogAffFacInWindow
       ) &&
-      (static_cast<int>(frameHessians.size()) - flagged > setting_minFrames)
+      (static_cast<int>(hessian_frames_.size()) - flagged > setting_minFrames)
     ) {
       // printf("MARGINALIZE frame %d, as only %'d/%'d points remaining (%'d %'d
       // %'d %'d). VisInLast %'d / %'d. traces %d, activated %d!\n",
@@ -95,16 +95,16 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
   }
 
   // Marginalize one frame which has the smallest distance score.
-  if (static_cast<int>(frameHessians.size()) - flagged >= setting_maxFrames) {
+  if (static_cast<int>(hessian_frames_.size()) - flagged >= setting_maxFrames) {
     double smallestScore        = 1.0;
     FrameHessian* toMarginalize = nullptr;
-    FrameHessian* latest        = frameHessians.back();
+    FrameHessian* latest        = hessian_frames_.back();
 
-    for (FrameHessian* fh : frameHessians) {
+    for (FrameHessian* fh : hessian_frames_) {
       if (fh->frameID > latest->frameID - setting_minFrameAge || fh->frameID == 0) {
         continue;
       }
-      // if (fh == frameHessians.front() == 0) {
+      // if (fh == hessian_frames_.front() == 0) {
       //   continue;
       // }
 
@@ -130,7 +130,7 @@ void FullSystem::flagFramesForMarginalization(FrameHessian* newFH) {
   }
 
   // printf("FRAMES LEFT: ");
-  // for(FrameHessian* fh : frameHessians)
+  // for(FrameHessian* fh : hessian_frames_)
   //   printf("%d ", fh->frameID);
   // printf("\n");
 }
@@ -141,10 +141,10 @@ void FullSystem::marginalizeFrame(FrameHessian* frame) {
   assert(frame->pointHessians.empty());
 
   // Marginalize the frame in the energy functional.
-  ef->marginalizeFrame(frame->efFrame);
+  ef_->marginalizeFrame(frame->efFrame);
 
   // Drop all observations of existing points in that frame.
-  for (FrameHessian* fh : frameHessians) {
+  for (FrameHessian* fh : hessian_frames_) {
     if (fh == frame) {
       continue;
     }
@@ -160,12 +160,12 @@ void FullSystem::marginalizeFrame(FrameHessian* frame) {
           }
 
           if (r->host->frameID < r->target->frameID) {
-            statistics_numForceDroppedResFwd++;
+            stats_num_force_dropped_res_fwd_++;
           } else {
-            statistics_numForceDroppedResBwd++;
+            stats_num_force_dropped_res_bwd_++;
           }
 
-          ef->dropResidual(r->efResidual);
+          ef_->dropResidual(r->efResidual);
           deleteOut<PointFrameResidual>(ph->residuals, i);
           break;
         }
@@ -177,22 +177,22 @@ void FullSystem::marginalizeFrame(FrameHessian* frame) {
   {
     std::vector<FrameHessian*> v;
     v.push_back(frame);
-    for (IOWrap::Output3DWrapper* ow : outputWrapper) {
+    for (IOWrap::Output3DWrapper* ow : output_3d_wrappers_) {
       ow->publishKeyframes(v, true, &Hcalib);
     }
   }
 
   // Remove the frame from the list.
-  frame->shell->marginalizedAt = frameHessians.back()->shell->id;
+  frame->shell->marginalizedAt = hessian_frames_.back()->shell->id;
   frame->shell->movedByOpt     = frame->w2c_leftEps().norm();
 
-  deleteOutOrder<FrameHessian>(frameHessians, frame);
-  for (std::size_t i = 0; i < frameHessians.size(); i++) {
-    frameHessians[i]->idx = static_cast<int>(i);
+  deleteOutOrder<FrameHessian>(hessian_frames_, frame);
+  for (std::size_t i = 0; i < hessian_frames_.size(); i++) {
+    hessian_frames_[i]->idx = static_cast<int>(i);
   }
 
   setPrecalcValues();
-  ef->setAdjointsF(&Hcalib);
+  ef_->setAdjointsF(&Hcalib);
 }
 
 } // namespace dso

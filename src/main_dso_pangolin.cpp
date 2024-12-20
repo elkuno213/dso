@@ -346,18 +346,18 @@ int main(int argc, char** argv) {
   // Initialize the full system.
   FullSystem* full_system = new FullSystem();
   full_system->setGammaFunction(reader->getPhotometricGamma());
-  full_system->linearizeOperation = (std::abs(playback_speed) < 1e-6f);
+  full_system->linear_operation_ = (std::abs(playback_speed) < 1e-6f);
 
   // Initialize the output wrapper for the viewer and push it to the full system
   // if display is enabled.
   IOWrap::PangolinDSOViewer* viewer = nullptr;
   if (!disableAllDisplay) {
     viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
-    full_system->outputWrapper.push_back(viewer);
+    full_system->output_3d_wrappers_.push_back(viewer);
   }
 
   if (use_sample_output) {
-    full_system->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
+    full_system->output_3d_wrappers_.push_back(new IOWrap::SampleOutputWrapper());
   }
 
   // Initialize the exit thread (hook ctrl+C).
@@ -401,7 +401,7 @@ int main(int argc, char** argv) {
     // Loop through all images to play.
     for (std::size_t j = 0; j < ids.size(); j++) {
       // If the system is not initialized, reset the clock.
-      if (!full_system->initialized) {
+      if (!full_system->is_initialized_) {
         gettimeofday(&tv_start, NULL);
         started       = clock();
         stamp_initial = stamps[j];
@@ -448,11 +448,11 @@ int main(int argc, char** argv) {
       delete img;
 
       // Reset the system if it failed or a full reset is requested.
-      if (full_system->initFailed || setting_fullResetRequested) {
+      if (full_system->is_initialization_failed_ || setting_fullResetRequested) {
         if (j < 250 || setting_fullResetRequested) {
           printf("RESETTING!\n");
 
-          std::vector<IOWrap::Output3DWrapper*> wraps = full_system->outputWrapper;
+          std::vector<IOWrap::Output3DWrapper*> wraps = full_system->output_3d_wrappers_;
           delete full_system;
 
           for (IOWrap::Output3DWrapper* wrap : wraps) {
@@ -461,15 +461,15 @@ int main(int argc, char** argv) {
 
           full_system = new FullSystem();
           full_system->setGammaFunction(reader->getPhotometricGamma());
-          full_system->linearizeOperation = (std::abs(playback_speed) < 1e-6f);
+          full_system->linear_operation_ = (std::abs(playback_speed) < 1e-6f);
 
-          full_system->outputWrapper = wraps;
+          full_system->output_3d_wrappers_ = wraps;
 
           setting_fullResetRequested = false;
         }
       }
       // Break if the system is lost.
-      if (full_system->isLost) {
+      if (full_system->is_lost_) {
         printf("LOST!!\n");
         break;
       }
@@ -530,7 +530,7 @@ int main(int argc, char** argv) {
   // Join the run thread.
   run_thread.join();
   // Join the viewer thread.
-  for (IOWrap::Output3DWrapper* wrap : full_system->outputWrapper) {
+  for (IOWrap::Output3DWrapper* wrap : full_system->output_3d_wrappers_) {
     wrap->join();
     delete wrap;
   }

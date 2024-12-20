@@ -52,18 +52,18 @@ void FullSystem::debugPlotTracking() {
 
   // Loop through all frames and make images for each frame.
   int idx = 0;
-  for (FrameHessian* f : frameHessians) {
+  for (FrameHessian* f : hessian_frames_) {
     std::vector<MinimalImageB3*> images;
 
     // Make images for all frames. They will be deleted by the FrameHessian's
     // destructor.
-    for (FrameHessian* f2 : frameHessians) {
+    for (FrameHessian* f2 : hessian_frames_) {
       if (f2->debugImage == nullptr) {
         f2->debugImage = new MinimalImageB3(wG[0], hG[0]);
       }
     }
 
-    for (FrameHessian* f2 : frameHessians) {
+    for (FrameHessian* f2 : hessian_frames_) {
       MinimalImageB3* debugImage = f2->debugImage;
       images.push_back(debugImage);
 
@@ -129,20 +129,20 @@ void FullSystem::debugPlot(std::string name) {
   float minID = 0.0f, maxID = 0.0f;
   if (static_cast<int>(freeDebugParam5 + 0.5f) == 7 || (debugSaveImages && false)) {
     std::vector<float> allID;
-    for (std::size_t f = 0; f < frameHessians.size(); f++) {
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+    for (std::size_t f = 0; f < hessian_frames_.size(); f++) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         if (ph != nullptr) {
           allID.push_back(ph->idepth_scaled);
         }
       }
 
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         if (ph != nullptr) {
           allID.push_back(ph->idepth_scaled);
         }
       }
 
-      for (PointHessian* ph : frameHessians[f]->pointHessiansOut) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansOut) {
         if (ph != nullptr) {
           allID.push_back(ph->idepth_scaled);
         }
@@ -154,36 +154,36 @@ void FullSystem::debugPlot(std::string name) {
     maxID = allID[static_cast<std::size_t>(n * 0.95)];
 
     // Slowly adapt: change by maximum 10% of old span.
-    float maxChange = 0.1f * (maxIdJetVisDebug - minIdJetVisDebug);
-    if (maxIdJetVisDebug < 0.0f || minIdJetVisDebug < 0.0f) {
+    float maxChange = 0.1f * (max_id_jet_vis_ - min_id_jet_vis_);
+    if (max_id_jet_vis_ < 0.0f || min_id_jet_vis_ < 0.0f) {
       maxChange = 1e5f;
     }
 
-    if (minID < minIdJetVisDebug - maxChange) {
-      minID = minIdJetVisDebug - maxChange;
+    if (minID < min_id_jet_vis_ - maxChange) {
+      minID = min_id_jet_vis_ - maxChange;
     }
-    if (minID > minIdJetVisDebug + maxChange) {
-      minID = minIdJetVisDebug + maxChange;
-    }
-
-    if (maxID < maxIdJetVisDebug - maxChange) {
-      maxID = maxIdJetVisDebug - maxChange;
-    }
-    if (maxID > maxIdJetVisDebug + maxChange) {
-      maxID = maxIdJetVisDebug + maxChange;
+    if (minID > min_id_jet_vis_ + maxChange) {
+      minID = min_id_jet_vis_ + maxChange;
     }
 
-    maxIdJetVisDebug = maxID;
-    minIdJetVisDebug = minID;
+    if (maxID < max_id_jet_vis_ - maxChange) {
+      maxID = max_id_jet_vis_ - maxChange;
+    }
+    if (maxID > max_id_jet_vis_ + maxChange) {
+      maxID = max_id_jet_vis_ + maxChange;
+    }
+
+    max_id_jet_vis_ = maxID;
+    min_id_jet_vis_ = minID;
   }
 
   // Loop through all frames and make images for each frame.
   int wh = hG[0] * wG[0];
-  for (std::size_t f = 0; f < frameHessians.size(); f++) {
+  for (std::size_t f = 0; f < hessian_frames_.size(); f++) {
     MinimalImageB3* img = new MinimalImageB3(wG[0], hG[0]);
     images.push_back(img);
-    // float* fd = frameHessians[f]->I;
-    Eigen::Vector3f* fd = frameHessians[f]->dI;
+    // float* fd = hessian_frames_[f]->I;
+    Eigen::Vector3f* fd = hessian_frames_[f]->dI;
 
     for (int i = 0; i < wh; i++) {
       int c = static_cast<int>(fd[i][0] * 0.9f);
@@ -194,7 +194,7 @@ void FullSystem::debugPlot(std::string name) {
     }
 
     if (static_cast<int>(freeDebugParam5 + 0.5f) == 0) {
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         if (ph == nullptr) {
           continue;
         }
@@ -205,7 +205,7 @@ void FullSystem::debugPlot(std::string name) {
           makeRainbow3B(ph->idepth_scaled)
         );
       }
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         if (ph == nullptr) {
           continue;
         }
@@ -215,7 +215,7 @@ void FullSystem::debugPlot(std::string name) {
           makeRainbow3B(ph->idepth_scaled)
         );
       }
-      for (PointHessian* ph : frameHessians[f]->pointHessiansOut) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansOut) {
         img->setPixelCirc(
           static_cast<int>(ph->u + 0.5f),
           static_cast<int>(ph->v + 0.5f),
@@ -223,7 +223,7 @@ void FullSystem::debugPlot(std::string name) {
         );
       }
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 1) {
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         if (ph == nullptr) {
           continue;
         }
@@ -234,7 +234,7 @@ void FullSystem::debugPlot(std::string name) {
         );
       }
 
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         img->setPixelCirc(
           static_cast<int>(ph->u + 0.5f),
           static_cast<int>(ph->v + 0.5f),
@@ -242,7 +242,7 @@ void FullSystem::debugPlot(std::string name) {
         );
       }
 
-      for (PointHessian* ph : frameHessians[f]->pointHessiansOut) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansOut) {
         img->setPixelCirc(
           static_cast<int>(ph->u + 0.5f),
           static_cast<int>(ph->v + 0.5f),
@@ -252,7 +252,7 @@ void FullSystem::debugPlot(std::string name) {
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 2) {
       //
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 3) {
-      for (ImmaturePoint* ph : frameHessians[f]->immaturePoints) {
+      for (ImmaturePoint* ph : hessian_frames_[f]->immaturePoints) {
         if (ph == nullptr) {
           continue;
         }
@@ -273,7 +273,7 @@ void FullSystem::debugPlot(std::string name) {
         }
       }
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 4) {
-      for (ImmaturePoint* ph : frameHessians[f]->immaturePoints) {
+      for (ImmaturePoint* ph : hessian_frames_[f]->immaturePoints) {
         if (ph == nullptr) {
           continue;
         }
@@ -322,7 +322,7 @@ void FullSystem::debugPlot(std::string name) {
         }
       }
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 5) {
-      for (ImmaturePoint* ph : frameHessians[f]->immaturePoints) {
+      for (ImmaturePoint* ph : hessian_frames_[f]->immaturePoints) {
         if (ph == nullptr) {
           continue;
         }
@@ -345,7 +345,7 @@ void FullSystem::debugPlot(std::string name) {
       }
 
     } else if (static_cast<int>(freeDebugParam5 + 0.5f) == 6) {
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         if (ph == nullptr) {
           continue;
         }
@@ -378,7 +378,7 @@ void FullSystem::debugPlot(std::string name) {
           );
         }
       }
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         if (ph == nullptr) {
           continue;
         }
@@ -413,14 +413,14 @@ void FullSystem::debugPlot(std::string name) {
       }
     }
     if (static_cast<int>(freeDebugParam5 + 0.5f) == 7) {
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         img->setPixelCirc(
           static_cast<int>(ph->u + 0.5f),
           static_cast<int>(ph->v + 0.5f),
           makeJet3B((ph->idepth_scaled - minID) / ((maxID - minID)))
         );
       }
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         if (ph == nullptr) {
           continue;
         }
@@ -443,9 +443,9 @@ void FullSystem::debugPlot(std::string name) {
 
   // Save the images if debug setting is enabled.
   if ((debugSaveImages && false)) {
-    for (std::size_t f = 0; f < frameHessians.size(); f++) {
+    for (std::size_t f = 0; f < hessian_frames_.size(); f++) {
       MinimalImageB3* img = new MinimalImageB3(wG[0], hG[0]);
-      Eigen::Vector3f* fd = frameHessians[f]->dI;
+      Eigen::Vector3f* fd = hessian_frames_[f]->dI;
 
       for (int i = 0; i < wh; i++) {
         int c = fd[i][0] * 0.9f;
@@ -455,14 +455,14 @@ void FullSystem::debugPlot(std::string name) {
         img->at(i) = Vec3b(c, c, c);
       }
 
-      for (PointHessian* ph : frameHessians[f]->pointHessians) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessians) {
         img->setPixelCirc(
           static_cast<int>(ph->u + 0.5f),
           static_cast<int>(ph->v + 0.5f),
           makeJet3B((ph->idepth_scaled - minID) / ((maxID - minID)))
         );
       }
-      for (PointHessian* ph : frameHessians[f]->pointHessiansMarginalized) {
+      for (PointHessian* ph : hessian_frames_[f]->pointHessiansMarginalized) {
         if (ph == nullptr) {
           continue;
         }
@@ -478,8 +478,8 @@ void FullSystem::debugPlot(std::string name) {
         buf,
         1000,
         "images_out/kf_%05d_%05d_%02zu.png",
-        frameHessians.back()->shell->id,
-        frameHessians.back()->frameID,
+        hessian_frames_.back()->shell->id,
+        hessian_frames_.back()->frameID,
         f
       );
       IOWrap::writeImage(buf, img);

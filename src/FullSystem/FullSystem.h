@@ -141,22 +141,22 @@ public:
 
   float optimize(int mnumOptIts);
 
-  void printResult(std::string file);
+  void printResult(std::string filename);
 
   void debugPlot(std::string name);
 
   void printFrameLifetimes();
 
-  std::vector<IOWrap::Output3DWrapper*> outputWrapper;
+  std::vector<IOWrap::Output3DWrapper*> output_3d_wrappers_;
 
-  bool isLost;
-  bool initFailed;
-  bool initialized;
-  bool linearizeOperation;
+  bool is_lost_;
+  bool is_initialization_failed_;
+  bool is_initialized_; // True if the full system is initialized.
+  bool linear_operation_;
 
-  void setGammaFunction(float* BInv);
+  void setGammaFunction(float* B_inv);
 
-  void setOriginalCalib(const VecXf& originalCalib, int originalW, int originalH);
+  void setOriginalCalib(const VecXf& calib, int width, int height);
 
 private:
   CalibHessian Hcalib;
@@ -172,8 +172,8 @@ private:
   double linAllPointSinle(PointHessian* point, float outlierTHSlack, bool plot);
 
   // Main pipeline functions.
-  Vec4 trackNewCoarse(FrameHessian* fh);
-  void traceNewCoarse(FrameHessian* fh);
+  Vec4 trackNewCoarse(FrameHessian* hessian);
+  void traceNewCoarse(FrameHessian* hessian);
   void activatePoints();
   void activatePointsMT();
   void activatePointsOldFirst();
@@ -242,63 +242,63 @@ private:
   void printLogLine();
   void printEvalLine();
   void printEigenValLine();
-  std::ofstream* calibLog;
-  std::ofstream* numsLog;
+  std::ofstream* calib_logger_;
+  std::ofstream* nums_logger_;
   std::ofstream* errorsLog;
-  std::ofstream* eigenAllLog;
-  std::ofstream* eigenPLog;
-  std::ofstream* eigenALog;
-  std::ofstream* DiagonalLog;
-  std::ofstream* variancesLog;
-  std::ofstream* nullspacesLog;
+  std::ofstream* eigen_all_logger_;
+  std::ofstream* eigen_p_logger_;
+  std::ofstream* eigen_a_logger_;
+  std::ofstream* diagonal_logger_;
+  std::ofstream* variances_logger_;
+  std::ofstream* nullspaces_logger_;
 
-  std::ofstream* coarseTrackingLog;
+  std::ofstream* coarse_tracking_logger_;
 
   // Statistics.
-  long int statistics_lastNumOptIts;
-  long int statistics_numDroppedPoints;
-  long int statistics_numActivatedPoints;
-  long int statistics_numCreatedPoints;
-  long int statistics_numForceDroppedResBwd;
-  long int statistics_numForceDroppedResFwd;
-  long int statistics_numMargResFwd;
-  long int statistics_numMargResBwd;
+  long int stats_last_num_opt_iters_;
+  long int stats_num_dropped_pts_;
+  long int stats_num_activated_pts_;
+  long int stats_num_created_pts;
+  long int stats_num_force_dropped_res_bwd_;
+  long int stats_num_force_dropped_res_fwd_;
+  long int stats_num_marg_res_fwd_;
+  long int stats_num_marg_res_bwd_;
   float statistics_lastFineTrackRMSE;
 
   // Variables changed by tracker thread, protected by trackMutex.
-  boost::mutex trackMutex;
-  std::vector<FrameShell*> allFrameHistory;
-  CoarseInitializer* coarseInitializer;
-  Vec5 lastCoarseRMSE;
+  boost::mutex tracking_mutex_;
+  std::vector<FrameShell*> frames_; // History of all frames.
+  CoarseInitializer* coarse_initializer_;
+  Vec5 last_coarse_rmse_;
 
   // Variables changed by mapping thread, protected by mapMutex.
-  boost::mutex mapMutex;
+  boost::mutex mapping_mutex_;
   std::vector<FrameShell*> allKeyFramesHistory;
 
-  EnergyFunctional* ef;
+  EnergyFunctional* ef_;
   IndexThreadReduce<Vec10> treadReduce;
 
-  float* selectionMap;
-  PixelSelector* pixelSelector;
-  CoarseDistanceMap* coarseDistanceMap;
+  float* selection_map_;
+  PixelSelector* pixel_selector_;
+  CoarseDistanceMap* coarse_distance_map_;
 
-  std::vector<FrameHessian*> frameHessians; // ONLY changed in marginalizeFrame and addFrame.
+  std::vector<FrameHessian*> hessian_frames_; // ONLY changed in marginalizeFrame and addFrame.
   std::vector<PointFrameResidual*> activeResiduals;
-  float currentMinActDist;
+  float curr_min_activation_dist_;
 
   std::vector<float> allResVec;
 
   // Variables for tracker exchange, protected by [coarseTrackerSwapMutex].
   boost::mutex coarseTrackerSwapMutex; // If tracker sees that there is a new reference, tracker
                                        // locks [coarseTrackerSwapMutex] and swaps the two.
-  CoarseTracker* coarseTracker_forNewKF; // Set as as reference. protected by
-                                         // [coarseTrackerSwapMutex].
-  CoarseTracker* coarseTracker; // Always used to track new frames. protected by [trackMutex].
-  float minIdJetVisTracker, maxIdJetVisTracker;
-  float minIdJetVisDebug, maxIdJetVisDebug;
+  CoarseTracker* coarse_tracker_for_new_kf_; // Set as reference. protected by [coarseTrackerSwapMutex].
+  CoarseTracker* coarse_tracker_; // Always used to track new frames and protected by [trackMutex].
+
+  float min_id_jet_vis_tracker_, max_id_jet_vis_tracker_;
+  float min_id_jet_vis_, max_id_jet_vis_;
 
   // Mutex for camToWorld's in shells (these are always in a good configuration).
-  boost::mutex shellPoseMutex;
+  boost::mutex frame_pose_mutex_;
 
   // Tracking always uses the newest KF as reference.
   void makeKeyFrame(FrameHessian* fh);
@@ -310,13 +310,14 @@ private:
   boost::mutex trackMapSyncMutex;
   boost::condition_variable trackedFrameSignal;
   boost::condition_variable mappedFrameSignal;
-  std::deque<FrameHessian*> unmappedTrackedFrames;
-  int needNewKFAfter; // Otherwise, a new KF is needed that has ID bigger than [needNewKFAfter].
-  boost::thread mappingThread;
-  bool runMapping;
+  std::deque<FrameHessian*> unmapped_tracked_frames_;
+  int new_kf_id_to_make_later_; // Otherwise, a new keyframe id is stored to
+                                // make it later in case of non linearize operation.
+  boost::thread mapping_thread_;
+  bool is_mapping_running_;
   bool needToKetchupMapping;
 
-  int lastRefStopID;
+  int last_ref_frame_id_;
 };
 
 } // namespace dso
