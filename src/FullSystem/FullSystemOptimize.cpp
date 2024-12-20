@@ -65,7 +65,7 @@ void FullSystem::linearizeAll_Reductor(
           // Projected point with real depth.
           Vec3f ptp = ptp_inf + r->host->targetPrecalc[r->target->idx].PRE_KtTll * p->idepth_scaled;
           // 0.01 = one pixel.
-          float relBS = 0.01 * ((ptp_inf.head<2>() / ptp_inf[2]) - (ptp.head<2>() / ptp[2])).norm();
+          float relBS = 0.01f * ((ptp_inf.head<2>() / ptp_inf[2]) - (ptp.head<2>() / ptp[2])).norm();
 
           if (relBS > p->maxRelBaseline) {
             p->maxRelBaseline = relBS;
@@ -101,27 +101,27 @@ void FullSystem::setNewFrameEnergyTH() {
   FrameHessian* newFrame = frameHessians.back();
 
   for (PointFrameResidual* r : activeResiduals) {
-    if (r->state_NewEnergyWithOutlier >= 0 && r->target == newFrame) {
+    if (r->state_NewEnergyWithOutlier >= 0.0 && r->target == newFrame) {
       allResVec.push_back(r->state_NewEnergyWithOutlier);
     }
   }
 
   // If there are no residuals, set a default value and return.
-  if (allResVec.size() == 0) {
-    newFrame->frameEnergyTH = 12 * 12 * patternNum;
+  if (allResVec.empty()) {
+    newFrame->frameEnergyTH = 12.0f * 12.0f * patternNum;
     return; // It should never happen, but let's make sure.
   }
 
   // Find the adaptive residual for the frame.
   int nthIdx = setting_frameEnergyTHN * allResVec.size();
-  assert(nthIdx < (int)allResVec.size());
-  assert(setting_frameEnergyTHN < 1);
+  assert(nthIdx < static_cast<int>(allResVec.size()));
+  assert(setting_frameEnergyTHN < 1.0f);
   std::nth_element(allResVec.begin(), allResVec.begin() + nthIdx, allResVec.end());
-  float nthElement = sqrtf(allResVec[nthIdx]);
+  float nthElement = std::sqrt(allResVec[nthIdx]);
 
   newFrame->frameEnergyTH = nthElement * setting_frameEnergyTHFacMedian;
   newFrame->frameEnergyTH = 26.0f * setting_frameEnergyTHConstWeight
-                          + newFrame->frameEnergyTH * (1 - setting_frameEnergyTHConstWeight);
+                          + newFrame->frameEnergyTH * (1.0f - setting_frameEnergyTHConstWeight);
   newFrame->frameEnergyTH = newFrame->frameEnergyTH * newFrame->frameEnergyTH;
   newFrame->frameEnergyTH *= setting_overallEnergyTHWeight * setting_overallEnergyTHWeight;
 
@@ -133,9 +133,9 @@ void FullSystem::setNewFrameEnergyTH() {
 }
 
 Vec3 FullSystem::linearizeAll(bool fixLinearization) {
-  double lastEnergyP = 0;
-  double lastEnergyR = 0;
-  double num         = 0;
+  double lastEnergyP = 0.0;
+  double lastEnergyR = 0.0;
+  double num         = 0.0;
 
   std::vector<PointFrameResidual*> toRemove[NUM_THREADS];
   for (int i = 0; i < NUM_THREADS; i++) {
@@ -186,15 +186,15 @@ Vec3 FullSystem::linearizeAll(bool fixLinearization) {
         PointHessian* ph = r->point;
 
         if (ph->lastResiduals[0].first == r){
-          ph->lastResiduals[0].first = 0;
+          ph->lastResiduals[0].first = nullptr;
         } else if (ph->lastResiduals[1].first == r) {
-          ph->lastResiduals[1].first = 0;
+          ph->lastResiduals[1].first = nullptr;
         }
 
-        for (unsigned int k = 0; k < ph->residuals.size(); k++) {
+        for (std::size_t k = 0; k < ph->residuals.size(); k++) {
           if (ph->residuals[k] == r) {
             ef->dropResidual(r->efResidual);
-            deleteOut<PointFrameResidual>(ph->residuals, k);
+            deleteOut<PointFrameResidual>(ph->residuals, static_cast<int>(k));
             nResRemoved++;
             break;
           }
@@ -224,8 +224,8 @@ bool FullSystem::doStepFromBackup(
   pstepfac.segment<3>(3).setConstant(stepfacR);
   pstepfac.segment<4>(6).setConstant(stepfacA);
 
-  float sumA = 0, sumB = 0, sumT = 0, sumR = 0, sumID = 0, numID = 0;
-  float sumNID = 0;
+  float sumA = 0.0f, sumB = 0.0f, sumT = 0.0f, sumR = 0.0f, sumID = 0.0f, numID = 0.0f;
+  float sumNID = 0.0f;
 
   if (setting_solverMode & SOLVER_MOMENTUM) {
     // Calculate sums for momentum mode.
@@ -244,7 +244,7 @@ bool FullSystem::doStepFromBackup(
         float step = ph->step + 0.5f * (ph->step_backup);
         ph->setIdepth(ph->idepth_backup + step);
         sumID += step * step;
-        sumNID += fabsf(ph->idepth_backup);
+        sumNID += std::abs(ph->idepth_backup);
         numID++;
 
         ph->setIdepthZero(ph->idepth_backup + step);
@@ -263,7 +263,7 @@ bool FullSystem::doStepFromBackup(
       for (PointHessian* ph : fh->pointHessians) {
         ph->setIdepth(ph->idepth_backup + stepfacD * ph->step);
         sumID += ph->step * ph->step;
-        sumNID += fabsf(ph->idepth_backup);
+        sumNID += std::abs(ph->idepth_backup);
         numID++;
 
         ph->setIdepthZero(ph->idepth_backup + stepfacD * ph->step);
@@ -282,20 +282,20 @@ bool FullSystem::doStepFromBackup(
   if (!setting_debugout_runquiet) {
     printf(
       "STEPS: A %.1f; B %.1f; R %.1f; T %.1f. \t",
-      sqrtf(sumA)          / (0.0005  * setting_thOptIterations),
-      sqrtf(sumB)          / (0.00005 * setting_thOptIterations),
-      sqrtf(sumR)          / (0.00005 * setting_thOptIterations),
-      sqrtf(sumT) * sumNID / (0.00005 * setting_thOptIterations)
+      std::sqrt(sumA)          / (0.0005f  * setting_thOptIterations),
+      std::sqrt(sumB)          / (0.00005f * setting_thOptIterations),
+      std::sqrt(sumR)          / (0.00005f * setting_thOptIterations),
+      std::sqrt(sumT) * sumNID / (0.00005f * setting_thOptIterations)
     );
   }
 
   EFDeltaValid = false;
   setPrecalcValues();
 
-  return sqrtf(sumA)          < 0.0005  * setting_thOptIterations
-      && sqrtf(sumB)          < 0.00005 * setting_thOptIterations
-      && sqrtf(sumR)          < 0.00005 * setting_thOptIterations
-      && sqrtf(sumT) * sumNID < 0.00005 * setting_thOptIterations;
+  return std::sqrt(sumA)          < 0.0005f  * setting_thOptIterations
+      && std::sqrt(sumB)          < 0.00005f * setting_thOptIterations
+      && std::sqrt(sumR)          < 0.00005f * setting_thOptIterations
+      && std::sqrt(sumT) * sumNID < 0.00005f * setting_thOptIterations;
 
   // printf("mean steps: %f %f %f!\n",
   //   meanStepC, meanStepP, meanStepD);
@@ -324,7 +324,7 @@ void FullSystem::backupState(bool backupLastStep) {
         fh->state_backup = fh->get_state();
         for (PointHessian* ph : fh->pointHessians) {
           ph->idepth_backup = ph->idepth;
-          ph->step_backup   = 0;
+          ph->step_backup   = 0.0f;
         }
       }
     }
@@ -357,7 +357,7 @@ void FullSystem::loadSateBackup() {
 
 double FullSystem::calcMEnergy() {
   if (setting_forceAceptStep) {
-    return 0;
+    return 0.0;
   }
   // calculate (x-x0)^T * [2b + H * (x-x0)] for everything saved in L.
   // ef->makeIDX();
@@ -377,7 +377,7 @@ void FullSystem::printOptRes(
   printf(
     "A(%f)=(AV %.3f). Num: A(%'d) + M(%'d); ab %f %f!\n",
     res[0],
-    sqrtf((float)(res[0] / (patternNum * ef->resInA))),
+    std::sqrt(static_cast<float>(res[0] / (patternNum * ef->resInA))),
     ef->resInA,
     ef->resInM,
     a,
@@ -387,7 +387,7 @@ void FullSystem::printOptRes(
 
 float FullSystem::optimize(int mnumOptIts) {
   if (frameHessians.size() < 2) {
-    return 0;
+    return 0.0f;
   }
   if (frameHessians.size() < 3) {
     mnumOptIts = 20;
@@ -417,9 +417,9 @@ float FullSystem::optimize(int mnumOptIts) {
   // Debug output.
   if (!setting_debugout_runquiet) {
     printf(
-      "OPTIMIZE %d pts, %d active res, %d lin res!\n",
+      "OPTIMIZE %d pts, %zu active res, %d lin res!\n",
       ef->nPoints,
-      (int)activeResiduals.size(),
+      activeResiduals.size(),
       numLRes
     );
   }
@@ -447,8 +447,8 @@ float FullSystem::optimize(int mnumOptIts) {
       lastEnergy,
       lastEnergyL,
       lastEnergyM,
-      0,
-      0,
+      0.0,
+      0.0,
       frameHessians.back()->aff_g2l().a,
       frameHessians.back()->aff_g2l().b
     );
@@ -457,8 +457,8 @@ float FullSystem::optimize(int mnumOptIts) {
   debugPlotTracking();
 
   double lambda  = 1e-1;
-  float stepsize = 1;
-  VecX previousX = VecX::Constant(CPARS + 8 * frameHessians.size(), NAN);
+  float stepsize = 1.0f;
+  VecX previousX = VecX::Constant(static_cast<std::size_t>(CPARS + 8 * frameHessians.size()), NAN);
   for (int iteration = 0; iteration < mnumOptIts; iteration++) {
     // Solve the system.
     backupState(iteration != 0);
@@ -469,17 +469,17 @@ float FullSystem::optimize(int mnumOptIts) {
     previousX = ef->lastX;
 
     if (std::isfinite(incDirChange) && (setting_solverMode & SOLVER_STEPMOMENTUM)) {
-      float newStepsize = exp(incDirChange * 1.4);
-      if (incDirChange < 0 && stepsize > 1) {
-        stepsize = 1;
+      float newStepsize = std::exp(incDirChange * 1.4f);
+      if (incDirChange < 0.0 && stepsize > 1.0f) {
+        stepsize = 1.0f;
       }
 
-      stepsize = sqrtf(sqrtf(newStepsize * stepsize * stepsize * stepsize));
-      if (stepsize > 2) {
-        stepsize = 2;
+      stepsize = std::sqrt(std::sqrt(newStepsize * stepsize * stepsize * stepsize));
+      if (stepsize > 2.0f) {
+        stepsize = 2.0f;
       }
-      if (stepsize < 0.25) {
-        stepsize = 0.25;
+      if (stepsize < 0.25f) {
+        stepsize = 0.25f;
       }
     }
 
@@ -499,7 +499,7 @@ float FullSystem::optimize(int mnumOptIts) {
           ? "ACCEPT"
           : "REJECT",
         iteration,
-        log10(lambda),
+        std::log10(lambda),
         incDirChange,
         stepsize
       );
@@ -507,8 +507,8 @@ float FullSystem::optimize(int mnumOptIts) {
         newEnergy,
         newEnergyL,
         newEnergyM,
-        0,
-        0,
+        0.0,
+        0.0,
         frameHessians.back()->aff_g2l().a,
         frameHessians.back()->aff_g2l().b
       );
@@ -560,18 +560,18 @@ float FullSystem::optimize(int mnumOptIts) {
   lastEnergy = linearizeAll(true);
 
   // Check if the tracking failed.
-  if (!std::isfinite((double)lastEnergy[0]) || !std::isfinite((double)lastEnergy[1]) || !std::isfinite((double)lastEnergy[2])) {
+  if (!std::isfinite(lastEnergy[0]) || !std::isfinite(lastEnergy[1]) || !std::isfinite(lastEnergy[2])) {
     printf("KF Tracking failed: LOST!\n");
     isLost = true;
   }
 
-  statistics_lastFineTrackRMSE = sqrtf((float)(lastEnergy[0] / (patternNum * ef->resInA)));
+  statistics_lastFineTrackRMSE = std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)));
 
   // Log the calibration if requested.
-  if (calibLog != 0) {
+  if (calibLog != nullptr) {
     (*calibLog) << Hcalib.value_scaled.transpose() << " "
                 << frameHessians.back()->get_state_scaled().transpose() << " "
-                << sqrtf((float)(lastEnergy[0] / (patternNum * ef->resInA)))
+                << std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)))
                 << " " << ef->resInM << "\n";
     calibLog->flush();
   }
@@ -586,7 +586,7 @@ float FullSystem::optimize(int mnumOptIts) {
 
   debugPlotTracking();
 
-  return sqrtf((float)(lastEnergy[0] / (patternNum * ef->resInA)));
+  return std::sqrt(static_cast<float>(lastEnergy[0] / (patternNum * ef->resInA)));
 }
 
 void FullSystem::solveSystem(int iteration, double lambda) {
@@ -603,7 +603,7 @@ void FullSystem::solveSystem(int iteration, double lambda) {
 double FullSystem::calcLEnergy() {
   // Return 0 if forced to accept the step.
   if (setting_forceAceptStep) {
-    return 0;
+    return 0.0;
   }
 
   double Ef = ef->calcLEnergyF_MT();
@@ -616,11 +616,11 @@ void FullSystem::removeOutliers() {
   for (FrameHessian* fh : frameHessians) {
     for (unsigned int i = 0; i < fh->pointHessians.size(); i++) {
       PointHessian* ph = fh->pointHessians[i];
-      if (ph == 0) {
+      if (ph == nullptr) {
         continue;
       }
 
-      if (ph->residuals.size() == 0) {
+      if (ph->residuals.empty()) {
         fh->pointHessiansOut.push_back(ph);
         ph->efPoint->stateFlag = EFPointStatus::PS_DROP;
         fh->pointHessians[i]   = fh->pointHessians.back();
@@ -645,7 +645,7 @@ std::vector<VecX> FullSystem::getNullspaces(
   nullspaces_affA.clear();
   nullspaces_affB.clear();
 
-  int n = CPARS + frameHessians.size() * 8;
+  int n = static_cast<int>(CPARS + frameHessians.size() * 8);
   std::vector<VecX> nullspaces_x0_pre;
   for (int i = 0; i < 6; i++) {
     VecX nullspace_x0(n);
