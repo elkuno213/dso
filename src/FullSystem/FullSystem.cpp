@@ -116,7 +116,7 @@ FullSystem::FullSystem() {
 
   coarse_distance_map_       = new CoarseDistanceMap(wG[0], hG[0]);
   coarse_tracker_            = new CoarseTracker    (wG[0], hG[0]);
-  coarse_tracker_for_new_kf_ = new CoarseTracker    (wG[0], hG[0]);
+  coarse_tracker_for_new_keyframe_ = new CoarseTracker    (wG[0], hG[0]);
   coarse_initializer_        = new CoarseInitializer(wG[0], hG[0]);
   pixel_selector_            = new PixelSelector    (wG[0], hG[0]);
 
@@ -140,7 +140,7 @@ FullSystem::FullSystem() {
   is_lost_                  = false;
   is_initialization_failed_ = false;
 
-  new_kf_id_to_make_later_ = -1;
+  new_keyframe_id_to_make_later_ = -1;
 
   linear_operation_   = true;
   is_mapping_running_ = true;
@@ -193,7 +193,7 @@ FullSystem::~FullSystem() {
 
   delete coarse_distance_map_;
   delete coarse_tracker_;
-  delete coarse_tracker_for_new_kf_;
+  delete coarse_tracker_for_new_keyframe_;
   delete coarse_initializer_;
   delete pixel_selector_;
   delete ef_;
@@ -895,11 +895,11 @@ void FullSystem::addActiveFrame(ImageAndExposure* image, int id) {
     // Initialized, so let's do front-end operation.
 
     // Swap the coarse tracker if refence frame is newer.
-    if (coarse_tracker_for_new_kf_->refFrameID > coarse_tracker_->refFrameID) {
+    if (coarse_tracker_for_new_keyframe_->refFrameID > coarse_tracker_->refFrameID) {
       boost::unique_lock<boost::mutex> coarse_tracker_swap_lock(coarse_tracker_swap_mutex_);
       CoarseTracker* tmp         = coarse_tracker_;
-      coarse_tracker_            = coarse_tracker_for_new_kf_;
-      coarse_tracker_for_new_kf_ = tmp;
+      coarse_tracker_            = coarse_tracker_for_new_keyframe_;
+      coarse_tracker_for_new_keyframe_ = tmp;
     }
 
     // Check if the tracking is lost.
@@ -920,7 +920,7 @@ void FullSystem::addActiveFrame(ImageAndExposure* image, int id) {
     if (setting_keyframesPerSecond > 0.0f) {
       need_to_make_keyframe
         = frames_.size() == 1
-       || (hessian->shell->timestamp - allKeyFramesHistory.back()->timestamp) > 0.95f / setting_keyframesPerSecond;
+       || (hessian->shell->timestamp - keyframes_.back()->timestamp) > 0.95f / setting_keyframesPerSecond;
     } else {
       // Reference-to-current affine.
       Vec2 affine = AffLight::fromToVecExposure(
@@ -952,13 +952,16 @@ void FullSystem::addActiveFrame(ImageAndExposure* image, int id) {
   }
 }
 
-void FullSystem::deliverTrackedFrame(FrameHessian* fh, bool needKF) {
+void FullSystem::deliverTrackedFrame(
+  FrameHessian* frame,
+  bool need_to_make_keyframe
+) {
   // Linearize operation = sequentialize the tracking and mapping.
   // If enabled, add the tracked frame to visualization wrapper and make
   // keyframe if needed.
   if (linear_operation_) {
     if (goStepByStep && last_ref_frame_id_ != coarse_tracker_->refFrameID) {
-      MinimalImageF3 img(wG[0], hG[0], fh->dI);
+      MinimalImageF3 img(wG[0], hG[0], frame->dI);
       IOWrap::displayImage("frameToTrack", &img);
       while (true) {
         char k = IOWrap::waitKey(0);
@@ -972,25 +975,25 @@ void FullSystem::deliverTrackedFrame(FrameHessian* fh, bool needKF) {
       handleKey(IOWrap::waitKey(1));
     }
 
-    if (needKF) {
-      makeKeyFrame(fh);
+    if (need_to_make_keyframe) {
+      makeKeyFrame(frame);
     } else {
-      makeNonKeyFrame(fh);
+      makeNonKeyFrame(frame);
     }
   } else {
     // Otherwise, add the frame to the unmapped tracked queue if needed.
-    boost::unique_lock<boost::mutex> lock(trackMapSyncMutex);
-    unmapped_tracked_frames_.push_back(fh);
-    if (needKF) {
-      new_kf_id_to_make_later_ = fh->shell->trackingRef->id;
+    boost::unique_lock<boost::mutex> lock(tracking_mapping_sync_mutex_);
+    unmapped_tracked_frames_.push_back(frame);
+    if (need_to_make_keyframe) {
+      new_keyframe_id_to_make_later_ = frame->shell->trackingRef->id;
     }
-    trackedFrameSignal.notify_all();
+    tracked_frame_signal_.notify_all();
 
     while (
-      coarse_tracker_for_new_kf_->refFrameID == -1 &&
+      coarse_tracker_for_new_keyframe_->refFrameID == -1 &&
       coarse_tracker_->refFrameID == -1
     ) {
-      mappedFrameSignal.wait(lock);
+      mapped_frame_signal_.wait(lock);
     }
 
     lock.unlock();
@@ -998,77 +1001,83 @@ void FullSystem::deliverTrackedFrame(FrameHessian* fh, bool needKF) {
 }
 
 void FullSystem::mappingLoop() {
-  boost::unique_lock<boost::mutex> lock(trackMapSyncMutex);
+  boost::unique_lock<boost::mutex> lock(tracking_mapping_sync_mutex_);
 
   while (is_mapping_running_) {
     // No tracked frame to map, so wait for the signal and return if the mapping
     // is not running.
     while (unmapped_tracked_frames_.empty()) {
-      trackedFrameSignal.wait(lock);
+      tracked_frame_signal_.wait(lock);
       if (!is_mapping_running_) {
         return;
       }
     }
 
     // Get the oldest tracked frame.
-    FrameHessian* fh = unmapped_tracked_frames_.front();
+    FrameHessian* oldest_tracked = unmapped_tracked_frames_.front();
     unmapped_tracked_frames_.pop_front();
 
     // Make sure to make a keyframe for the very first 2 tracked frames.
-    if (allKeyFramesHistory.size() <= 2) {
+    if (keyframes_.size() <= 2) {
       lock.unlock();
-      makeKeyFrame(fh);
+      makeKeyFrame(oldest_tracked);
       lock.lock();
-      mappedFrameSignal.notify_all();
+      mapped_frame_signal_.notify_all();
       continue;
     }
 
     // If there are more than 3 frames to track, we need to catch up with the mapping.
     if (unmapped_tracked_frames_.size() > 3) {
-      needToKetchupMapping = true;
+      need_to_catchup_mapping_ = true;
     }
 
     if (!unmapped_tracked_frames_.empty()) {
       // If there are still other unmapped tracked frames, make the current
       // frame as non-keyframe.
       lock.unlock();
-      makeNonKeyFrame(fh);
+      makeNonKeyFrame(oldest_tracked);
       lock.lock();
 
-      if (needToKetchupMapping && !unmapped_tracked_frames_.empty()) {
-        FrameHessian* fh = unmapped_tracked_frames_.front();
+      // If catch-up mapping is needed, pop another oldest tracked frame one by
+      // one until the unmapped tracked frames are empty.
+      if (need_to_catchup_mapping_ && !unmapped_tracked_frames_.empty()) {
+        FrameHessian* second_oldest_tracked = unmapped_tracked_frames_.front();
         unmapped_tracked_frames_.pop_front();
         {
-          boost::unique_lock<boost::mutex> crlock(frame_pose_mutex_);
-          assert(fh->shell->trackingRef != nullptr);
-          fh->shell->camToWorld = fh->shell->trackingRef->camToWorld * fh->shell->camToTrackingRef;
-          fh->setEvalPT_scaled(fh->shell->camToWorld.inverse(), fh->shell->aff_g2l);
+          boost::unique_lock<boost::mutex> frame_pose_lock(frame_pose_mutex_);
+          assert(second_oldest_tracked->shell->trackingRef != nullptr);
+          second_oldest_tracked->shell->camToWorld
+            = second_oldest_tracked->shell->trackingRef->camToWorld
+            * second_oldest_tracked->shell->camToTrackingRef;
+          second_oldest_tracked->setEvalPT_scaled(
+            second_oldest_tracked->shell->camToWorld.inverse(),
+            second_oldest_tracked->shell->aff_g2l
+          );
         }
-        delete fh;
+        delete second_oldest_tracked;
       }
-
     } else {
       // Otherwise, make the tracked frame as keyframe if possible, otherwise as non-keyframe.
-      if (setting_realTimeMaxKF || new_kf_id_to_make_later_ >= hessian_frames_.back()->shell->id) {
+      if (setting_realTimeMaxKF || new_keyframe_id_to_make_later_ >= hessian_frames_.back()->shell->id) {
         lock.unlock();
-        makeKeyFrame(fh);
-        needToKetchupMapping = false;
+        makeKeyFrame(oldest_tracked);
+        need_to_catchup_mapping_ = false;
         lock.lock();
       } else {
         lock.unlock();
-        makeNonKeyFrame(fh);
+        makeNonKeyFrame(oldest_tracked);
         lock.lock();
       }
     }
-    mappedFrameSignal.notify_all();
+    mapped_frame_signal_.notify_all();
   }
   printf("MAPPING FINISHED!\n");
 }
 
 void FullSystem::blockUntilMappingIsFinished() {
-  boost::unique_lock<boost::mutex> lock(trackMapSyncMutex);
+  boost::unique_lock<boost::mutex> lock(tracking_mapping_sync_mutex_);
   is_mapping_running_ = false;
-  trackedFrameSignal.notify_all();
+  tracked_frame_signal_.notify_all();
   lock.unlock();
 
   mapping_thread_.join();
@@ -1113,8 +1122,8 @@ void FullSystem::makeKeyFrame(FrameHessian* fh) {
   // Add the frame to the energy functional.
   fh->idx = hessian_frames_.size();
   hessian_frames_.push_back(fh);
-  fh->frameID = allKeyFramesHistory.size();
-  allKeyFramesHistory.push_back(fh->shell);
+  fh->frameID = keyframes_.size();
+  keyframes_.push_back(fh->shell);
   ef_->insertFrame(fh, &Hcalib);
 
   setPrecalcValues();
@@ -1146,16 +1155,16 @@ void FullSystem::makeKeyFrame(FrameHessian* fh) {
   float rmse        = optimize(setting_maxOptIterations);
 
   // Check if the initialization failed.
-  if (allKeyFramesHistory.size() <= 4) {
-    if (allKeyFramesHistory.size() == 2 && rmse > 20.0f * benchmark_initializerSlackFactor) {
+  if (keyframes_.size() <= 4) {
+    if (keyframes_.size() == 2 && rmse > 20.0f * benchmark_initializerSlackFactor) {
       printf("I THINK INITIALIZATINO FAILED! Resetting.\n");
       is_initialization_failed_ = true;
     }
-    if (allKeyFramesHistory.size() == 3 && rmse > 13.0f * benchmark_initializerSlackFactor) {
+    if (keyframes_.size() == 3 && rmse > 13.0f * benchmark_initializerSlackFactor) {
       printf("I THINK INITIALIZATINO FAILED! Resetting.\n");
       is_initialization_failed_ = true;
     }
-    if (allKeyFramesHistory.size() == 4 && rmse > 9.0f * benchmark_initializerSlackFactor) {
+    if (keyframes_.size() == 4 && rmse > 9.0f * benchmark_initializerSlackFactor) {
       printf("I THINK INITIALIZATINO FAILED! Resetting.\n");
       is_initialization_failed_ = true;
     }
@@ -1171,15 +1180,15 @@ void FullSystem::makeKeyFrame(FrameHessian* fh) {
 
   {
     boost::unique_lock<boost::mutex> crlock(coarse_tracker_swap_mutex_);
-    coarse_tracker_for_new_kf_->makeK(&Hcalib);
-    coarse_tracker_for_new_kf_->setCoarseTrackingRef(hessian_frames_);
+    coarse_tracker_for_new_keyframe_->makeK(&Hcalib);
+    coarse_tracker_for_new_keyframe_->setCoarseTrackingRef(hessian_frames_);
 
-    coarse_tracker_for_new_kf_->debugPlotIDepthMap(
+    coarse_tracker_for_new_keyframe_->debugPlotIDepthMap(
       &min_id_jet_vis_tracker_,
       &max_id_jet_vis_tracker_,
       output_3d_wrappers_
     );
-    coarse_tracker_for_new_kf_->debugPlotIDepthMapFloat(output_3d_wrappers_);
+    coarse_tracker_for_new_keyframe_->debugPlotIDepthMapFloat(output_3d_wrappers_);
   }
 
   debugPlot("post Optimize");
@@ -1223,8 +1232,8 @@ void FullSystem::initializeFromInitializer(FrameHessian* newFrame) {
   FrameHessian* firstFrame = coarse_initializer_->firstFrame;
   firstFrame->idx          = hessian_frames_.size();
   hessian_frames_.push_back(firstFrame);
-  firstFrame->frameID = allKeyFramesHistory.size();
-  allKeyFramesHistory.push_back(firstFrame->shell);
+  firstFrame->frameID = keyframes_.size();
+  keyframes_.push_back(firstFrame->shell);
   ef_->insertFrame(firstFrame, &Hcalib);
   setPrecalcValues();
 
@@ -1386,15 +1395,15 @@ void FullSystem::printLogLine() {
     printf(
       "LOG %d: %.3f fine. Res: %d A, %d L, %d M; (%'d / %'d) forceDrop. a=%f, "
       "b=%f. Window %d (%d)\n",
-      allKeyFramesHistory.back()->id,
+      keyframes_.back()->id,
       statistics_lastFineTrackRMSE,
       ef_->resInA,
       ef_->resInL,
       ef_->resInM,
       (int)stats_num_force_dropped_res_fwd_,
       (int)stats_num_force_dropped_res_bwd_,
-      allKeyFramesHistory.back()->aff_g2l.a,
-      allKeyFramesHistory.back()->aff_g2l.b,
+      keyframes_.back()->aff_g2l.a,
+      keyframes_.back()->aff_g2l.b,
       hessian_frames_.back()->shell->id - hessian_frames_.front()->shell->id,
       (int)hessian_frames_.size()
     );
@@ -1408,7 +1417,7 @@ void FullSystem::printLogLine() {
   // Log.
   if (nums_logger_ != nullptr) {
     (*nums_logger_)
-      << allKeyFramesHistory.back()->id     << " "
+      << keyframes_.back()->id     << " "
       << statistics_lastFineTrackRMSE       << " "
       << (int)stats_num_created_pts   << " "
       << (int)stats_num_activated_pts_ << " "
@@ -1485,7 +1494,7 @@ void FullSystem::printEigenValLine() {
     VecX ea                        = VecX::Zero(nz);
     ea.head(eigenvaluesAll.size()) = eigenvaluesAll;
     (*eigen_all_logger_)
-      << allKeyFramesHistory.back()->id << " "
+      << keyframes_.back()->id << " "
       << ea.transpose()                 << "\n";
     eigen_all_logger_->flush();
   }
@@ -1493,7 +1502,7 @@ void FullSystem::printEigenValLine() {
     VecX ea                = VecX::Zero(nz);
     ea.head(eigenA.size()) = eigenA;
     (*eigen_a_logger_)
-      << allKeyFramesHistory.back()->id << " "
+      << keyframes_.back()->id << " "
       << ea.transpose()                 << "\n";
     eigen_a_logger_->flush();
   }
@@ -1501,7 +1510,7 @@ void FullSystem::printEigenValLine() {
     VecX ea                = VecX::Zero(nz);
     ea.head(eigenP.size()) = eigenP;
     (*eigen_p_logger_)
-    << allKeyFramesHistory.back()->id << " "
+    << keyframes_.back()->id << " "
     << ea.transpose()                 << "\n";
     eigen_p_logger_->flush();
   }
@@ -1510,7 +1519,7 @@ void FullSystem::printEigenValLine() {
     VecX ea                  = VecX::Zero(nz);
     ea.head(diagonal.size()) = diagonal;
     (*diagonal_logger_)
-      << allKeyFramesHistory.back()->id << " "
+      << keyframes_.back()->id << " "
       << ea.transpose()                 << "\n";
     diagonal_logger_->flush();
   }
@@ -1519,13 +1528,13 @@ void FullSystem::printEigenValLine() {
     VecX ea                  = VecX::Zero(nz);
     ea.head(diagonal.size()) = ef_->lastHS.inverse().diagonal();
     (*variances_logger_)
-      << allKeyFramesHistory.back()->id << " "
+      << keyframes_.back()->id << " "
       << ea.transpose()                 << "\n";
     variances_logger_->flush();
   }
 
   std::vector<VecX>& nsp = ef_->lastNullspaces_forLogging;
-  (*nullspaces_logger_) << allKeyFramesHistory.back()->id << " ";
+  (*nullspaces_logger_) << keyframes_.back()->id << " ";
   for (std::size_t i = 0; i < nsp.size(); i++) {
     (*nullspaces_logger_)
       << nsp[i].dot(ef_->lastHS * nsp[i]) << " "

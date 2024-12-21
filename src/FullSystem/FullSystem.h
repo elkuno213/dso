@@ -273,7 +273,7 @@ private:
 
   // Variables changed by mapping thread, protected by mapMutex.
   boost::mutex mapping_mutex_;
-  std::vector<FrameShell*> allKeyFramesHistory;
+  std::vector<FrameShell*> keyframes_;
 
   EnergyFunctional* ef_;
   IndexThreadReduce<Vec10> treadReduce;
@@ -291,7 +291,7 @@ private:
   // Variables for tracker exchange, protected by [coarseTrackerSwapMutex].
   boost::mutex coarse_tracker_swap_mutex_; // If tracker sees that there is a new reference, tracker
                                            // locks [coarseTrackerSwapMutex] and swaps the two.
-  CoarseTracker* coarse_tracker_for_new_kf_; // Set as reference. protected by [coarseTrackerSwapMutex].
+  CoarseTracker* coarse_tracker_for_new_keyframe_; // Set as reference. protected by [coarseTrackerSwapMutex].
   CoarseTracker* coarse_tracker_; // Always used to track new frames and protected by [trackMutex].
 
   float min_id_jet_vis_tracker_, max_id_jet_vis_tracker_;
@@ -307,15 +307,15 @@ private:
   void mappingLoop();
 
   // Tracking / mapping synchronization. All protected by [trackMapSyncMutex].
-  boost::mutex trackMapSyncMutex;
-  boost::condition_variable trackedFrameSignal;
-  boost::condition_variable mappedFrameSignal;
+  boost::mutex tracking_mapping_sync_mutex_;
+  boost::condition_variable tracked_frame_signal_;
+  boost::condition_variable mapped_frame_signal_;
   std::deque<FrameHessian*> unmapped_tracked_frames_;
-  int new_kf_id_to_make_later_; // Otherwise, a new keyframe id is stored to
-                                // make it later in case of non linearize operation.
+  int new_keyframe_id_to_make_later_; // Otherwise, a new keyframe id is stored to
+                                      // make it later in case of non linearize operation.
   boost::thread mapping_thread_;
   bool is_mapping_running_;
-  bool needToKetchupMapping;
+  bool need_to_catchup_mapping_;
 
   int last_ref_frame_id_;
 };
