@@ -289,8 +289,8 @@ private:
   std::vector<float> allResVec;
 
   // Variables for tracker exchange, protected by [coarseTrackerSwapMutex].
-  boost::mutex coarseTrackerSwapMutex; // If tracker sees that there is a new reference, tracker
-                                       // locks [coarseTrackerSwapMutex] and swaps the two.
+  boost::mutex coarse_tracker_swap_mutex_; // If tracker sees that there is a new reference, tracker
+                                           // locks [coarseTrackerSwapMutex] and swaps the two.
   CoarseTracker* coarse_tracker_for_new_kf_; // Set as reference. protected by [coarseTrackerSwapMutex].
   CoarseTracker* coarse_tracker_; // Always used to track new frames and protected by [trackMutex].
 
